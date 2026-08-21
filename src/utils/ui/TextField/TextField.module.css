@@ -1,0 +1,12 @@
+.field :global(.MuiOutlinedInput-root) {
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+}
+
+.field :global(.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline) {
+  border-color: var(--color-primary);
+}
+
+.field :global(.MuiInputLabel-root.Mui-focused) {
+  color: var(--color-primary);
+}

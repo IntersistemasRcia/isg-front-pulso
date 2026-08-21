@@ -1,0 +1,7 @@
+.loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+}
