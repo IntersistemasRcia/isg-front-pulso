@@ -7,9 +7,9 @@
 }
 
 .button:global(.MuiButton-containedPrimary) {
-  background-color: var(--color-primary) !important;
+  background-color: var(--color-orange) !important;
 }
 
 .button:global(.MuiButton-containedPrimary:hover) {
-  background-color: var(--color-primary-dark) !important;
+  background-color: var(--color-orange-dark) !important;
 }

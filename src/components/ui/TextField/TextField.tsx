@@ -5,7 +5,7 @@ import styles from "./TextField.module.css";
 export type TextFieldProps = MuiTextFieldProps;
 
 /**
- * Wrapper de TextField de MUI. Las páginas deben importar desde `@/utils/ui`.
+ * Wrapper de TextField de MUI. Las páginas deben importar desde `@/components/ui`.
  */
 export function TextField({ className, ...props }: TextFieldProps) {
   const classes = [styles.field, className].filter(Boolean).join(" ");

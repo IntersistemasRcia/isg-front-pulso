@@ -20,6 +20,7 @@ export interface LoginCredentials {
 /** Respuesta esperada de la API Auth existente. */
 export interface LoginResponse {
   token: string;
+  /** ISO / offset datetime (mapeado desde `validTo` de Auth). */
   expiresAt?: string;
   user?: Partial<User>;
 }

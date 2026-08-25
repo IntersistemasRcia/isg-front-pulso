@@ -3,30 +3,31 @@
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
-import { AuthProvider } from "@/utils/AuthProvider";
+import { AuthProvider } from "@/components/providers/AuthProvider";
 
 const theme = createTheme({
   palette: {
     mode: "light",
     primary: {
-      main: "#0b4f6c",
-      dark: "#083a50",
-      light: "#1a6f94",
+      main: "#ff8a00",
+      dark: "#ff6a00",
+      light: "#ffb380",
       contrastText: "#ffffff",
     },
     secondary: {
-      main: "#01baef",
+      main: "#6A2ED2",
+      contrastText: "#ffffff",
     },
     error: {
       main: "#c62828",
     },
     background: {
-      default: "#f5f7f9",
+      default: "#fbf9fb",
       paper: "#ffffff",
     },
     text: {
-      primary: "#1a2332",
-      secondary: "#5a6b7d",
+      primary: "#333333",
+      secondary: "#5c5663",
     },
   },
   typography: {

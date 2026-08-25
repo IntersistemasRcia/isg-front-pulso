@@ -3,13 +3,21 @@
 [Project Context]
 Type = Next.js App Router (TypeScript)
 Architecture = On-Premise (Standalone Server per Client)
-Styling = CSS Modules (*.module.css) + Material UI Abstraction in /utils
+Styling = CSS Modules (*.module.css) + Material UI Abstraction in /components/ui
 
 [Styling Guidelines]
-1. ALWAYS use CSS Modules for component-level styling.
-2. NEVER import @mui/material components directly in pages/features. Import them ONLY from `@/utils/ui`.
+1. ALWAYS use CSS Modules for component-level styling (`NombreComponente.module.css` junto al componente).
+2. NEVER import @mui/material components directly in pages/features. Import them from `@/components/ui` or `@/utils/MyButtons`.
 3. Keep global reset, fonts, and CSS variables in `app/globals.css`.
 4. Component design must be responsive, modern, and clean.
+5. Pages in `app/` only compose; reusable UI lives in `src/components/`.
+
+[Folder Structure]
+1. `src/components/` — UI (ui, chat, layout, providers). Each component has its own `*.module.css`.
+2. `src/utils/` — helpers (api, auth, constants, spCatalog) y `MyButtons` (wrapper MUI ISG).
+3. Prefer `@/components/ui` for generic UI; use `@/utils/MyButtons` for brand primary/secondary buttons.
+4. `src/lib/chat/` — chat orchestration (tool routing, windowing, truncation, local agent).
+5. `src/types/` — shared TypeScript DTOs.
 
 [Architecture & API]
 1. This app is hosted ON-PREMISE on the client's own Windows Server/Domain.

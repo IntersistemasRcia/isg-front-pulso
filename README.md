@@ -17,11 +17,12 @@ npm run dev
 
 Abrir [http://localhost:3000](http://localhost:3000).
 
-## Arquitectura
+## Autenticación
 
-- **On-premise por cliente**: cada instancia usa rutas relativas `/api/...` o `NEXT_PUBLIC_API_URL`.
-- **Auth**: `POST /api/auth/login` proxy a `AUTH_API_URL` (API_Auth). JWT en cookie + localStorage.
-- **Chat**: `POST /api/chat` valida JWT, llama OpenAI con tools (SPs) y despacha al agente local `.NET` (`LOCAL_AGENT_URL` + `X-API-Key`).
+- Dev (`npm run dev`): usa [`.env.development`](.env.development) → `AUTH_API_URL=http://api.intersistemas.ar:8601`
+- Prod (`npm start`): usa [`.env.production`](.env.production) → `AUTH_API_URL=http://localhost:8601` (mismo servidor)
+- Proxy Next: `POST /api/auth/login` → `POST {AUTH_API_URL}/api/Auth/Login` con `{ usuario, password }`
+- Secretos (`OPENAI_API_KEY`, `JWT_SECRET`) van en `.env.local` (no se versionan)
 
 ## Ramas
 
@@ -30,4 +31,6 @@ Abrir [http://localhost:3000](http://localhost:3000).
 
 ## Estilos
 
-CSS Modules + wrappers MUI en `@/utils/ui` (no importar `@mui/material` desde páginas).
+CSS Modules + wrappers MUI en `@/components/ui` (no importar `@mui/material` desde páginas).
+
+Helpers puros en `src/utils/`. Orquestación de chat en `src/lib/chat/`.

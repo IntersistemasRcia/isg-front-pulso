@@ -7,7 +7,7 @@ export type ButtonProps = MuiButtonProps & {
 };
 
 /**
- * Wrapper de Button de MUI. Las páginas deben importar desde `@/utils/ui`.
+ * Wrapper de Button de MUI. Las páginas deben importar desde `@/components/ui`.
  */
 export function Button({ className, children, ...props }: ButtonProps) {
   const classes = [styles.button, className].filter(Boolean).join(" ");

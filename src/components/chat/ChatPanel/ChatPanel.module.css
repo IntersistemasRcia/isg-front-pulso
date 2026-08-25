@@ -1,0 +1,16 @@
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--header-height));
+  min-height: 0;
+}
+
+.errorBanner {
+  margin: 0 1.5rem 0.75rem;
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border: 1px solid #f5c2c0;
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem;
+  font-size: var(--font-size-sm);
+}
