@@ -27,3 +27,10 @@ Styling = CSS Modules (*.module.css) + Material UI Abstraction in /components/ui
 [Code Quality]
 1. Strict TypeScript types for all DTOs and Props.
 2. Clean code, well-commented functions, handle loading and error states explicitly.
+
+[Multi-LLM]
+1. Catálogo, BYOK y resolución de modelos viven en src/lib/llm/ (registry, resolveModel, byokStorage).
+2. No hardcodear API keys; usar env, BYOK cifrado o helpers de resolveModel.
+3. Nuevos modelos: actualizar MODEL_CATALOG, documentación en docs/LLM.md y selector vía /api/chat/providers.
+4. Prioridad de claves: BYOK usuario > env empresa > env free tier.
+5. Rutas API: /api/chat (modelId + fallback 429), /api/chat/providers, /api/settings/ia.

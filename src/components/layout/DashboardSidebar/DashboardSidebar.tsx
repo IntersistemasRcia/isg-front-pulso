@@ -45,6 +45,19 @@ export function DashboardSidebar() {
         >
           Chat
         </Link>
+        <Link
+          href="/dashboard/settings/ia"
+          className={[
+            styles.navItem,
+            pathname.startsWith("/dashboard/settings/ia")
+              ? styles.navItemActive
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          Configuración IA
+        </Link>
       </nav>
 
       <div className={styles.history}>
@@ -54,11 +67,11 @@ export function DashboardSidebar() {
         </p>
       </div>
 
-        <div className={styles.userBlock}>
-          <div>
-            <div className={styles.userName}>{user?.displayName ?? "Usuario"}</div>
-            <div className={styles.userMeta}>{user?.companyName}</div>
-          </div>
+      <div className={styles.userBlock}>
+        <div>
+          <div className={styles.userName}>{user?.displayName ?? "Usuario"}</div>
+          <div className={styles.userMeta}>{user?.companyName}</div>
+        </div>
         <MyButtons
           color="primary"
           size="small"

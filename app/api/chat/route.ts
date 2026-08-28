@@ -5,103 +5,129 @@ import {
   streamText,
   type UIMessage,
 } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import {
-  extractBearerToken,
-  mapPayloadToUser,
-  verifyAuthToken,
-} from "@/utils/auth";
-import { AUTH_COOKIE_NAME } from "@/utils/constants";
+  DEFAULT_MODEL_ID,
+  getFallbackChain,
+  isRateLimitError,
+  LlmNotConfiguredError,
+  LlmQuotaExceededError,
+  resolveModel,
+} from "@/lib/llm";
+import { windowMessages } from "@/lib/chat/windowMessages";
+import type { SpArquitectura } from "@/lib/pulso/types";
 import {
-  buildTools,
-  selectActiveTools,
-  windowMessages,
-} from "@/lib/chat";
+  buildPulsoSystemPrompt,
+  buildPulsoTools,
+  getPulsoApiBaseUrl,
+  getSpsArquitecturaCached,
+} from "@/lib/pulso";
+import { requireAuth } from "@/utils/requireAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-function extractLastUserText(messages: UIMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const msg = messages[i];
-    if (msg.role !== "user") continue;
-    return msg.parts
-      .filter((p): p is { type: "text"; text: string } => p.type === "text")
-      .map((p) => p.text)
-      .join(" ");
-  }
-  return "";
-}
-
 /**
- * Orquestador de chat: valida JWT, selecciona tools relevantes,
- * limita contexto/resultados y despacha SPs al agente local.
+ * Orquestador de chat Pulso:
+ * valida JWT → catálogo SPs → tools → multi-LLM con fallback en 429.
  * POST /api/chat
  */
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cookieToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const token = extractBearerToken(authHeader) ?? cookieToken ?? null;
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
 
-  if (!token) {
-    return new Response(JSON.stringify({ message: "No autorizado" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  const user = auth.user;
+  const token = auth.token;
 
-  let user;
-  try {
-    const payload = await verifyAuthToken(token);
-    user = mapPayloadToUser(payload);
-  } catch {
-    return new Response(JSON.stringify({ message: "Token inválido o expirado" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  if (!process.env.OPENAI_API_KEY) {
+  if (!getPulsoApiBaseUrl()) {
     return new Response(
-      JSON.stringify({ message: "OPENAI_API_KEY no configurada" }),
+      JSON.stringify({
+        message:
+          "NEXT_PUBLIC_PULSO_API_URL (o PULSO_API_URL) no configurada",
+      }),
       { status: 503, headers: { "Content-Type": "application/json" } },
     );
   }
 
-  const body = (await request.json()) as { messages: UIMessage[] };
+  const body = (await request.json()) as {
+    messages: UIMessage[];
+    modelId?: string;
+  };
   const allMessages = body.messages ?? [];
+  const requestedModelId = body.modelId?.trim() || DEFAULT_MODEL_ID;
   const { messages, historySummary } = windowMessages(allMessages);
 
-  const userText = extractLastUserText(allMessages);
-  const activeCatalog = selectActiveTools(userText);
-  const tools = buildTools(activeCatalog, user.clienteId);
-
-  const modelId = process.env.OPENAI_MODEL || "gpt-4o-mini";
-  const systemParts = [
-    "Sos un asistente de negocio (Pulso ISG) que responde en español rioplatense.",
-    "Usás las tools (stored procedures) para obtener datos reales del ERP del cliente.",
-    `ClienteId del usuario autenticado: ${user.clienteId || "N/D"}.`,
-    `Tools activas en este turno: ${activeCatalog.map((t) => t.name).join(", ")}.`,
-    "Cuando obtengas datos tabulares, presentalos en Markdown con tablas claras.",
-    "Si falta un parámetro, pedilo antes de inventar valores.",
-    "Antes de llamar a una tool, el usuario verá el estado 'Consultando base de datos...'.",
-  ];
-
-  if (historySummary) {
-    systemParts.push(historySummary);
+  let catalog: SpArquitectura[] = [];
+  try {
+    catalog = await getSpsArquitecturaCached(token);
+  } catch (error) {
+    console.error("[chat] SPs_arquitectura:", error);
   }
 
-  const result = streamText({
-    model: openai(modelId),
-    system: systemParts.join(" "),
-    messages: await convertToModelMessages(messages),
-    tools,
-    stopWhen: stepCountIs(5),
+  const tools = buildPulsoTools(token);
+  const system = buildPulsoSystemPrompt({
+    companyName: user.companyName,
+    clienteId: user.clienteId,
+    catalog,
+    historySummary,
   });
 
-  return result.toUIMessageStreamResponse();
+  const modelChain = [
+    requestedModelId,
+    ...(await getFallbackChain(user.id, requestedModelId)),
+  ].filter((id, index, arr) => arr.indexOf(id) === index);
+
+  let lastError: unknown;
+
+  for (const modelId of modelChain) {
+    try {
+      const resolved = await resolveModel(user.id, modelId);
+      const result = streamText({
+        model: resolved.languageModel,
+        system,
+        messages: await convertToModelMessages(messages),
+        tools,
+        stopWhen: stepCountIs(5),
+      });
+
+      return result.toUIMessageStreamResponse({
+        headers: {
+          "X-Pulso-Model-Id": resolved.modelId,
+          "X-Pulso-Model-Source": resolved.source,
+        },
+      });
+    } catch (error) {
+      lastError = error;
+      if (isRateLimitError(error)) {
+        console.warn(`[chat] Rate limit en ${modelId}, probando fallback…`);
+        continue;
+      }
+      if (error instanceof LlmNotConfiguredError) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (lastError instanceof LlmNotConfiguredError) {
+    return new Response(JSON.stringify({ message: lastError.message }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (isRateLimitError(lastError)) {
+    return new Response(
+      JSON.stringify({ message: new LlmQuotaExceededError().message }),
+      { status: 429, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  const message =
+    lastError instanceof Error
+      ? lastError.message
+      : "No se pudo iniciar el modelo de chat.";
+  return new Response(JSON.stringify({ message }), {
+    status: 500,
+    headers: { "Content-Type": "application/json" },
+  });
 }

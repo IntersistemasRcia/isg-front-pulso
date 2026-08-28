@@ -6,16 +6,40 @@ import { DefaultChatTransport } from "ai";
 import { MessageList } from "@/components/chat/MessageList/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput/ChatInput";
 import { TypingIndicator } from "@/components/chat/TypingIndicator/TypingIndicator";
+import { ModelSelector } from "@/components/chat/ModelSelector/ModelSelector";
+import { DEFAULT_MODEL_ID, MODEL_STORAGE_KEY } from "@/lib/llm/registry";
 import { getStoredToken } from "@/utils/api";
 import styles from "./ChatPanel.module.css";
 
+function readStoredModelId(): string {
+  if (typeof window === "undefined") return DEFAULT_MODEL_ID;
+  try {
+    return localStorage.getItem(MODEL_STORAGE_KEY) ?? DEFAULT_MODEL_ID;
+  } catch {
+    return DEFAULT_MODEL_ID;
+  }
+}
+
 /**
- * Panel de chat: cablea useChat + lista/input/indicadores.
- * Las páginas solo montan este componente.
+ * Panel de chat: useChat + selector de modelo multi-LLM.
  */
 export function ChatPanel() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
+  const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
+
+  useEffect(() => {
+    setModelId(readStoredModelId());
+  }, []);
+
+  function handleModelChange(nextId: string) {
+    setModelId(nextId);
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, nextId);
+    } catch {
+      // ignore quota errors
+    }
+  }
 
   const transport = useMemo(
     () =>
@@ -25,8 +49,9 @@ export function ChatPanel() {
           const token = getStoredToken();
           return token ? { Authorization: `Bearer ${token}` } : {};
         },
+        body: { modelId },
       }),
-    [],
+    [modelId],
   );
 
   const { messages, sendMessage, status, error, clearError } = useChat({
@@ -49,6 +74,14 @@ export function ChatPanel() {
 
   return (
     <div className={styles.chat}>
+      <header className={styles.header}>
+        <ModelSelector
+          value={modelId}
+          onChange={handleModelChange}
+          disabled={isBusy}
+        />
+      </header>
+
       <MessageList messages={messages} bottomRef={bottomRef} />
 
       {isBusy ? (
