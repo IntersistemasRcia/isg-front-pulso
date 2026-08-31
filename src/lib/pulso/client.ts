@@ -3,18 +3,42 @@ import {
   getPulsoApiBaseUrl,
   resolvePulsoToken,
 } from "@/lib/pulso/config";
-import { normalizePulsoParametros } from "@/lib/pulso/formatParams";
+import {
+  normalizeArquitecturaPayload,
+  parsePulsoApiError,
+  toPulsoEjecutarSpBody,
+} from "@/lib/pulso/normalizeArquitectura";
 import type {
   EjecutarSpRequest,
   EjecutarSpResponse,
   SpArquitectura,
 } from "@/lib/pulso/types";
+import {
+  translatePulsoApiError,
+  type UserErrorCode,
+} from "@/utils/userFacingErrors";
 
 type FetchOptions = {
   /** JWT de sesión del usuario autenticado en Pulso front. */
   sessionToken?: string | null;
   signal?: AbortSignal;
 };
+
+/** Error HTTP de isg-api-pulso con mensaje ya traducido. */
+export class PulsoApiError extends Error {
+  readonly httpStatus: number;
+  readonly code: UserErrorCode;
+  readonly title: string;
+
+  constructor(httpStatus: number, data: unknown) {
+    const translated = translatePulsoApiError(httpStatus, data);
+    super(translated.message);
+    this.name = "PulsoApiError";
+    this.httpStatus = httpStatus;
+    this.code = translated.code;
+    this.title = translated.title;
+  }
+}
 
 async function getLocalHttpsDispatcher(): Promise<object | undefined> {
   // Certificado autofirmado de Kestrel/IIS Express en desarrollo local
@@ -57,12 +81,14 @@ async function pulsoFetch(
 }
 
 /**
- * GET /SPs_arquitectura — catálogo dinámico de procedimientos.
+ * GET /SPs_arquitectura — catálogo slim (sys.parameters).
+ * Por defecto sin CodigoSQL (ahorro de tokens). Usá includeSql solo para debug.
  */
 export async function fetchSpsArquitectura(
-  options: FetchOptions = {},
+  options: FetchOptions & { includeSql?: boolean } = {},
 ): Promise<SpArquitectura[]> {
-  const response = await pulsoFetch("/SPs_arquitectura", {
+  const query = options.includeSql ? "?includeSql=true" : "";
+  const response = await pulsoFetch(`/SPs_arquitectura${query}`, {
     method: "GET",
     sessionToken: options.sessionToken,
     signal: options.signal,
@@ -71,9 +97,7 @@ export async function fetchSpsArquitectura(
   const raw = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(
-      `Error al obtener SPs_arquitectura (${response.status}): ${JSON.stringify(raw)}`,
-    );
+    throw new PulsoApiError(response.status, raw);
   }
 
   return normalizeArquitecturaPayload(raw);
@@ -86,10 +110,14 @@ export async function ejecutarSpPulso(
   body: EjecutarSpRequest,
   options: FetchOptions = {},
 ): Promise<EjecutarSpResponse> {
-  const payload: EjecutarSpRequest = {
+  const payload = toPulsoEjecutarSpBody({
     nombreSp: body.nombreSp,
-    parametros: normalizePulsoParametros(body.parametros),
-  };
+    parametros: body.parametros,
+  });
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[pulso] POST /ejecutar-sp", JSON.stringify(payload));
+  }
 
   const response = await pulsoFetch("/ejecutar-sp", {
     method: "POST",
@@ -98,34 +126,29 @@ export async function ejecutarSpPulso(
     body: JSON.stringify(payload),
   });
 
-  const data = (await response.json().catch(() => ({}))) as EjecutarSpResponse;
+  const raw: unknown = await response.json().catch(() => ({}));
 
   if (!response.ok) {
     return {
       ok: false,
       status: response.status,
-      message: "Error al ejecutar SP en isg-api-pulso",
-      request: payload,
-      data,
+      message: parsePulsoApiError(response.status, raw),
+      request: body,
+      data: raw,
     };
   }
 
-  return data;
-}
-
-function normalizeArquitecturaPayload(raw: unknown): SpArquitectura[] {
+  // La API devuelve IEnumerable<dynamic> → array JSON de filas
   if (Array.isArray(raw)) {
-    return raw as SpArquitectura[];
+    return {
+      ok: true,
+      rows: raw,
+      data: raw,
+    };
   }
 
-  if (raw && typeof raw === "object") {
-    const obj = raw as Record<string, unknown>;
-    for (const key of ["data", "sps", "items", "result", "arquitectura"] as const) {
-      if (Array.isArray(obj[key])) {
-        return obj[key] as SpArquitectura[];
-      }
-    }
-  }
-
-  return [];
+  return {
+    ok: true,
+    ...(typeof raw === "object" && raw !== null ? (raw as EjecutarSpResponse) : {}),
+  };
 }

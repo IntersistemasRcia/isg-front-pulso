@@ -4,8 +4,21 @@ import { createGroq } from "@ai-sdk/groq";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getByokApiKey } from "./byokStorage";
-import { DEFAULT_MODEL_ID, getModelDefinition, MODEL_CATALOG } from "./registry";
+import { buildQuotaExceededMessage } from "./llmErrors";
+import {
+  DEFAULT_MODEL_ID,
+  getModelDefinition,
+  MODEL_CATALOG,
+  normalizeModelId,
+} from "./registry";
 import type { ApiKeySource, ByokProviderId, ModelDefinition } from "./types";
+
+export {
+  isModelUnavailableError,
+  isRateLimitError,
+  isRetriableModelError,
+  unwrapLlmError,
+} from "./llmErrors";
 
 export class LlmNotConfiguredError extends Error {
   readonly code = "LLM_NOT_CONFIGURED" as const;
@@ -21,8 +34,8 @@ export class LlmNotConfiguredError extends Error {
 export class LlmQuotaExceededError extends Error {
   readonly code = "LLM_QUOTA_EXCEEDED" as const;
 
-  constructor(message = "Cuota agotada en todos los modelos disponibles.") {
-    super(message);
+  constructor(message?: string, cause?: unknown) {
+    super(message ?? buildQuotaExceededMessage(cause));
     this.name = "LlmQuotaExceededError";
   }
 }
@@ -98,7 +111,7 @@ function buildLanguageModel(
 
 /** Resuelve un modelo según prioridad: BYOK usuario > env empresa > env free. */
 export async function resolveModel(userId: string, modelId: string) {
-  const definition = getModelDefinition(modelId);
+  const definition = getModelDefinition(normalizeModelId(modelId));
   if (!definition) {
     throw new LlmNotConfiguredError(modelId, `Modelo desconocido: ${modelId}`);
   }
@@ -121,10 +134,11 @@ export async function getFallbackChain(
   userId: string,
   modelId: string,
 ): Promise<string[]> {
+  const normalizedId = normalizeModelId(modelId);
   const chain: string[] = [];
 
   const freeModels = MODEL_CATALOG.filter(
-    (m) => m.tier === "free" && m.id !== modelId,
+    (m) => m.tier === "free" && m.id !== normalizedId,
   );
   for (const model of freeModels) {
     if (await isModelConfigured(userId, model.id)) {
@@ -133,7 +147,7 @@ export async function getFallbackChain(
   }
 
   if (
-    modelId !== DEFAULT_MODEL_ID &&
+    normalizedId !== DEFAULT_MODEL_ID &&
     !chain.includes(DEFAULT_MODEL_ID) &&
     (await isModelConfigured(userId, DEFAULT_MODEL_ID))
   ) {
@@ -141,7 +155,7 @@ export async function getFallbackChain(
   }
 
   const premiumModels = MODEL_CATALOG.filter(
-    (m) => m.tier === "premium" && m.id !== modelId,
+    (m) => m.tier === "premium" && m.id !== normalizedId,
   );
   for (const model of premiumModels) {
     if (await isModelConfigured(userId, model.id)) {
@@ -150,26 +164,6 @@ export async function getFallbackChain(
   }
 
   return [...new Set(chain)];
-}
-
-export function isRateLimitError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const err = error as {
-    status?: number;
-    statusCode?: number;
-    message?: string;
-    cause?: unknown;
-  };
-  const status = err.status ?? err.statusCode;
-  if (status === 429) return true;
-  const message = String(err.message ?? "").toLowerCase();
-  if (message.includes("429") || message.includes("rate limit") || message.includes("quota")) {
-    return true;
-  }
-  if (err.cause) {
-    return isRateLimitError(err.cause);
-  }
-  return false;
 }
 
 export async function isModelConfigured(

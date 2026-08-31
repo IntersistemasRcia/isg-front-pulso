@@ -32,11 +32,13 @@ Pulso soporta varios proveedores de modelos con prioridad de claves:
 2. **Claves de empresa** en variables de entorno (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`)
 3. **Tier free del despliegue** (`GOOGLE_FREE_API_KEY`, `GROQ_API_KEY`)
 
-Modelos gratuitos por defecto: **Gemini 2.0 Flash** y **Llama 3.3 70B** (Groq, opcional).
+Modelos gratuitos por defecto: **Gemini 3.6 Flash** y **GPT-OSS 120B** vía Groq (opcional).
 
 Modelos premium: GPT-4o, Claude Sonnet, Gemini 2.5 Pro (requieren BYOK o claves de empresa).
 
 Documentación detallada: [docs/LLM.md](docs/LLM.md).
+
+Integración ERP: [docs/PULSO_API.md](docs/PULSO_API.md) ([isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso)).
 
 ## Ramas
 

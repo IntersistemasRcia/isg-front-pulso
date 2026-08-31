@@ -95,3 +95,15 @@
   font-size: var(--font-size-xs, 0.75rem);
   color: var(--color-error, #b91c1c);
 }
+
+.setupHint {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  font-size: var(--font-size-xs, 0.75rem);
+  line-height: 1.45;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-sm, 8px);
+  max-width: 36rem;
+}

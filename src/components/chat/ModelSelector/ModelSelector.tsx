@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_MODEL_ID } from "@/lib/llm/registry";
-import type { ProviderAvailability } from "@/lib/llm/types";
+import { DEFAULT_MODEL_ID, normalizeModelId } from "@/lib/llm/registry";
+import type {
+  LlmProvidersApiResponse,
+  ProviderAvailability,
+} from "@/lib/llm/types";
 import { getStoredToken } from "@/utils/api";
+import { translateErrorMessage } from "@/utils/userFacingErrors";
 import styles from "./ModelSelector.module.css";
 
 export interface ModelSelectorProps {
@@ -13,15 +17,12 @@ export interface ModelSelectorProps {
   disabled?: boolean;
 }
 
-interface ProvidersResponse {
-  models: ProviderAvailability[];
-}
-
 /**
  * Selector de modelo LLM con grupos free/premium y enlace a configuración BYOK.
  */
 export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps) {
   const [models, setModels] = useState<ProviderAvailability[]>([]);
+  const [setupHint, setSetupHint] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,13 +41,19 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
         if (!res.ok) {
           throw new Error("No se pudo cargar la lista de modelos");
         }
-        const data = (await res.json()) as ProvidersResponse;
+        const data = (await res.json()) as LlmProvidersApiResponse;
         if (!cancelled) {
           setModels(data.models ?? []);
+          setSetupHint(data.setupHint ?? null);
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Error de red");
+          setError(
+            translateErrorMessage(
+              err instanceof Error ? err.message : "Error de red",
+              "generic",
+            ).message,
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -117,11 +124,16 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
       <div className={styles.selectRow}>
         <select
           className={styles.select}
-          value={value}
+          value={availableModels.some((m) => m.id === value) ? value : ""}
           disabled={disabled || loading || !availableModels.length}
           onChange={(e) => onChange(e.target.value)}
           aria-labelledby="pulso-model-label"
         >
+          {!availableModels.length ? (
+            <option value="">
+              {loading ? "Cargando modelos…" : "Sin modelos configurados"}
+            </option>
+          ) : null}
           {freeModels.length ? (
             <optgroup label="Gratis (tier despliegue)">
               {freeModels.map(renderOption)}
@@ -153,6 +165,9 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
         ) : null}
       </div>
       {error ? <p className={styles.error}>{error}</p> : null}
+      {!error && !loading && !availableModels.length && setupHint ? (
+        <p className={styles.setupHint}>{setupHint}</p>
+      ) : null}
       {!error && selected?.description ? (
         <p className={styles.hint}>{selected.description}</p>
       ) : null}

@@ -6,9 +6,10 @@ import styles from "./MessageList.module.css";
 export type MessageListProps = {
   messages: UIMessage[];
   bottomRef?: RefObject<HTMLDivElement | null>;
+  streamingMessageId?: string | null;
 };
 
-export function MessageList({ messages, bottomRef }: MessageListProps) {
+export function MessageList({ messages, bottomRef, streamingMessageId }: MessageListProps) {
   if (messages.length === 0) {
     return (
       <div className={styles.messages}>
@@ -26,7 +27,11 @@ export function MessageList({ messages, bottomRef }: MessageListProps) {
   return (
     <div className={styles.messages}>
       {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} />
+        <MessageBubble
+          key={message.id}
+          message={message}
+          isStreaming={message.id === streamingMessageId}
+        />
       ))}
       <div ref={bottomRef} />
     </div>

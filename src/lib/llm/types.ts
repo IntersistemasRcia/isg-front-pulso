@@ -12,6 +12,8 @@ export type ApiKeySource = "byok" | "company" | "free";
 /** Proveedor BYOK que el usuario puede configurar en ajustes. */
 export type ByokProviderId = "openai" | "anthropic" | "google";
 
+export type PromptCatalogMode = "full" | "compact" | "minimal" | "tool-only";
+
 export interface ModelDefinition {
   id: string;
   label: string;
@@ -23,6 +25,11 @@ export interface ModelDefinition {
   byokProvider?: ByokProviderId;
   /** Variables de entorno de despliegue (company o free tier). */
   envKeys?: string[];
+  /** Catálogo compacto (sin SQL) para proveedores con límite bajo de tokens. */
+  promptMode?: PromptCatalogMode;
+  /** Límite de input del proveedor; con headroom se usa ~75% como techo. */
+  maxInputTokens?: number;
+  inputHeadroomRatio?: number;
 }
 
 export interface ProviderAvailability {
@@ -33,6 +40,12 @@ export interface ProviderAvailability {
   available: boolean;
   requiresByok: boolean;
   configuredVia?: ApiKeySource;
+}
+
+export interface LlmProvidersApiResponse {
+  models: ProviderAvailability[];
+  freeTierConfigured: boolean;
+  setupHint?: string;
 }
 
 export interface ByokProviderState {

@@ -2,7 +2,18 @@ import type { ByokProviderId, ModelDefinition } from "./types";
 
 export const MODEL_STORAGE_KEY = "pulso.chat.modelId";
 
-export const DEFAULT_MODEL_ID = "gemini-2.0-flash";
+export const DEFAULT_MODEL_ID = "gemini-3.6-flash";
+
+/** IDs antiguos → modelo actual (p. ej. localStorage del cliente). */
+export const LEGACY_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  "gemini-2.0-flash": "gemini-3.6-flash",
+  /** Groq lo retiró el 2026-08-16 → openai/gpt-oss-120b */
+  "llama-3.3-70b-versatile": "gpt-oss-120b",
+};
+
+export function normalizeModelId(modelId: string): string {
+  return LEGACY_MODEL_ALIASES[modelId] ?? modelId;
+}
 
 export const BYOK_PROVIDERS: ReadonlyArray<{
   id: ByokProviderId;
@@ -33,22 +44,34 @@ export const BYOK_PROVIDERS: ReadonlyArray<{
 /** Catálogo de modelos expuestos en el selector de chat. */
 export const MODEL_CATALOG: readonly ModelDefinition[] = [
   {
-    id: "gemini-2.0-flash",
-    label: "Gemini 2.0 Flash",
+    id: "gemini-3.6-flash",
+    label: "Gemini 3.6 Flash",
     description: "Modelo gratuito de Google (tier free del despliegue).",
     tier: "free",
     provider: "google-free",
-    providerModelId: "gemini-2.0-flash",
+    providerModelId: "gemini-3.6-flash",
     envKeys: ["GOOGLE_FREE_API_KEY"],
   },
   {
-    id: "llama-3.3-70b-versatile",
-    label: "Llama 3.3 70B",
-    description: "Modelo gratuito vía Groq (si está configurado).",
+    id: "gemini-2.0-flash-lite",
+    label: "Gemini 2.0 Flash Lite",
+    description: "Alternativa gratuita de Google (cuota diaria separada).",
+    tier: "free",
+    provider: "google-free",
+    providerModelId: "gemini-2.0-flash-lite",
+    envKeys: ["GOOGLE_FREE_API_KEY"],
+  },
+  {
+    id: "gpt-oss-120b",
+    label: "GPT-OSS 120B",
+    description: "Modelo gratuito vía Groq (reemplazo oficial de Llama 3.3).",
     tier: "free",
     provider: "groq",
-    providerModelId: "llama-3.3-70b-versatile",
+    providerModelId: "openai/gpt-oss-120b",
     envKeys: ["GROQ_API_KEY"],
+    promptMode: "compact",
+    maxInputTokens: 8000,
+    inputHeadroomRatio: 0.75,
   },
   {
     id: "gpt-4o-mini",
@@ -93,7 +116,8 @@ export const MODEL_CATALOG: readonly ModelDefinition[] = [
 ];
 
 export function getModelDefinition(modelId: string): ModelDefinition | undefined {
-  return MODEL_CATALOG.find((m) => m.id === modelId);
+  const resolvedId = normalizeModelId(modelId);
+  return MODEL_CATALOG.find((m) => m.id === resolvedId);
 }
 
 export function listModelsByTier(tier: ModelDefinition["tier"]): ModelDefinition[] {

@@ -14,12 +14,27 @@
   color: var(--color-text);
 }
 
+.statusGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .status {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+}
+
+.statusDotSession {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
 }
 
 .statusDot {

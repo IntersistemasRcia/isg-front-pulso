@@ -3,6 +3,29 @@ import { MODEL_CATALOG } from "./registry";
 import { companyEnvConfigured, isModelConfigured } from "./resolveModel";
 import type { ProviderAvailability } from "./types";
 
+function readEnv(key: string): string | null {
+  const value = process.env[key]?.trim();
+  return value || null;
+}
+
+/** Indica si el despliegue tiene al menos un modelo free configurado. */
+export function isFreeTierConfigured(): boolean {
+  return MODEL_CATALOG.some(
+    (model) =>
+      model.tier === "free" &&
+      model.envKeys?.some((envKey) => Boolean(readEnv(envKey))),
+  );
+}
+
+/** Mensaje para admin/dev cuando no hay claves free en el servidor. */
+export function getFreeTierSetupHint(): string {
+  return (
+    "No hay modelos gratuitos activos. El administrador debe definir " +
+    "GOOGLE_FREE_API_KEY (Gemini 3.6 Flash) en .env.local y reiniciar el servidor. " +
+    "Opcional: GROQ_API_KEY para GPT-OSS 120B (Groq)."
+  );
+}
+
 /** Lista modelos del catálogo marcando disponibilidad para el usuario. */
 export async function getAvailableProviders(userId: string): Promise<ProviderAvailability[]> {
   const byok = await listByokConfigured(userId);

@@ -12,8 +12,8 @@ Este documento describe cómo Pulso elige proveedores, modelos y claves API.
 
 | ID | Etiqueta | Tier | Proveedor | Env / BYOK |
 | --- | --- | --- | --- | --- |
-| `gemini-2.0-flash` | Gemini 2.0 Flash | free | Google (free key) | `GOOGLE_FREE_API_KEY` |
-| `llama-3.3-70b-versatile` | Llama 3.3 70B | free | Groq | `GROQ_API_KEY` |
+| `gemini-3.6-flash` | Gemini 3.6 Flash | free | Google (free key) | `GOOGLE_FREE_API_KEY` |
+| `gpt-oss-120b` | GPT-OSS 120B | free | Groq | `GROQ_API_KEY` |
 | `gpt-4o-mini` | GPT-4o mini | premium | OpenAI | BYOK / `OPENAI_API_KEY` |
 | `gpt-4o` | GPT-4o | premium | OpenAI | BYOK / `OPENAI_API_KEY` |
 | `claude-sonnet-4-20250514` | Claude Sonnet 4 | premium | Anthropic | BYOK / `ANTHROPIC_API_KEY` |
@@ -38,7 +38,7 @@ Para cada solicitud de chat, `resolveModel()` aplica:
 
 ## API de chat
 
-- `POST /api/chat` — body `{ messages, modelId? }`. Default: `gemini-2.0-flash`.
+- `POST /api/chat` — body `{ messages, modelId? }`. Default: `gemini-3.6-flash`.
 - `GET /api/chat/providers` — lista modelos con flag `available`.
 - Headers de respuesta opcionales: `X-Pulso-Model-Id`, `X-Pulso-Model-Source`.
 
@@ -50,7 +50,7 @@ Si el modelo solicitado devuelve rate limit, el servidor prueba la cadena de mod
 
 ```env
 GOOGLE_FREE_API_KEY=   # Gemini free tier
-GROQ_API_KEY=          # Llama free (opcional)
+GROQ_API_KEY=          # GPT-OSS 120B free vía Groq (opcional)
 OPENAI_API_KEY=        # Premium empresa
 ANTHROPIC_API_KEY=
 GOOGLE_API_KEY=        # Gemini premium empresa

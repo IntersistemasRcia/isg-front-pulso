@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAvailableProviders } from "@/lib/llm";
+import {
+  getAvailableProviders,
+  getFreeTierSetupHint,
+  isFreeTierConfigured,
+} from "@/lib/llm";
 import { requireAuth } from "@/utils/requireAuth";
 
 export const runtime = "nodejs";
@@ -10,5 +14,11 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const models = await getAvailableProviders(auth.user.id);
-  return NextResponse.json({ models });
+  const freeTierConfigured = isFreeTierConfigured();
+
+  return NextResponse.json({
+    models,
+    freeTierConfigured,
+    setupHint: freeTierConfigured ? undefined : getFreeTierSetupHint(),
+  });
 }

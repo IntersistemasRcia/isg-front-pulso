@@ -2,19 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { DefaultChatTransport, isToolUIPart } from "ai";
 import { MessageList } from "@/components/chat/MessageList/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput/ChatInput";
 import { TypingIndicator } from "@/components/chat/TypingIndicator/TypingIndicator";
 import { ModelSelector } from "@/components/chat/ModelSelector/ModelSelector";
-import { DEFAULT_MODEL_ID, MODEL_STORAGE_KEY } from "@/lib/llm/registry";
+import { DEFAULT_MODEL_ID, MODEL_STORAGE_KEY, normalizeModelId } from "@/lib/llm/registry";
+import { syncSpArquitecturaFromApi } from "@/lib/pulso/arquitecturaStorage";
 import { getStoredToken } from "@/utils/api";
+import { toUserMessage } from "@/utils/userFacingErrors";
 import styles from "./ChatPanel.module.css";
 
 function readStoredModelId(): string {
   if (typeof window === "undefined") return DEFAULT_MODEL_ID;
   try {
-    return localStorage.getItem(MODEL_STORAGE_KEY) ?? DEFAULT_MODEL_ID;
+    const stored = localStorage.getItem(MODEL_STORAGE_KEY);
+    return normalizeModelId(stored ?? DEFAULT_MODEL_ID);
   } catch {
     return DEFAULT_MODEL_ID;
   }
@@ -32,10 +35,20 @@ export function ChatPanel() {
     setModelId(readStoredModelId());
   }, []);
 
+  /** Cache local de GET /SPs_arquitectura (nombres y tipos de parámetro por SP). */
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) return;
+    void syncSpArquitecturaFromApi(token).catch(() => {
+      // El chat sigue funcionando: el servidor refresca el catálogo en POST /api/chat.
+    });
+  }, []);
+
   function handleModelChange(nextId: string) {
-    setModelId(nextId);
+    const normalized = normalizeModelId(nextId);
+    setModelId(normalized);
     try {
-      localStorage.setItem(MODEL_STORAGE_KEY, nextId);
+      localStorage.setItem(MODEL_STORAGE_KEY, normalized);
     } catch {
       // ignore quota errors
     }
@@ -56,9 +69,33 @@ export function ChatPanel() {
 
   const { messages, sendMessage, status, error, clearError } = useChat({
     transport,
+    onError: (err) => {
+      console.error("[ChatPanel]", err);
+    },
   });
 
   const isBusy = status === "submitted" || status === "streaming";
+
+  const streamingMessageId =
+    isBusy && messages.length > 0 && messages[messages.length - 1]?.role === "assistant"
+      ? messages[messages.length - 1].id
+      : null;
+
+  function getBusyLabel(): string {
+    if (status === "submitted") return "Iniciando consulta…";
+    const last = messages[messages.length - 1];
+    if (last?.role === "assistant") {
+      for (const part of last.parts) {
+        if (
+          isToolUIPart(part) &&
+          (part.state === "input-streaming" || part.state === "input-available")
+        ) {
+          return "Consultando ERP (isg-api-pulso)…";
+        }
+      }
+    }
+    return "Pensando…";
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -82,21 +119,18 @@ export function ChatPanel() {
         />
       </header>
 
-      <MessageList messages={messages} bottomRef={bottomRef} />
+      <MessageList
+        messages={messages}
+        bottomRef={bottomRef}
+        streamingMessageId={streamingMessageId}
+      />
 
-      {isBusy ? (
-        <TypingIndicator
-          label={
-            status === "submitted"
-              ? "Consultando base de datos…"
-              : "Pensando…"
-          }
-        />
-      ) : null}
+      {isBusy ? <TypingIndicator label={getBusyLabel()} /> : null}
 
       {error ? (
-        <div className={styles.errorBanner}>
-          {error.message || "Error al procesar el mensaje"}
+        <div className={styles.errorBanner} role="alert">
+          <strong className={styles.errorTitle}>No pudimos procesar tu consulta</strong>
+          <span>{toUserMessage(error, "chat")}</span>
         </div>
       ) : null}
 
