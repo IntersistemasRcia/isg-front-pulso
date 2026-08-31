@@ -15,37 +15,67 @@ export function isTokenExpired(token: string, skewSeconds = 30): boolean {
   }
 }
 
-/** Valida firma HS256 del JWT emitido por API_Auth. */
+/**
+ * Valida el JWT de API Auth.
+ * - Con JWT_SECRET: verifica firma (HS256 / HS512).
+ * - Sin JWT_SECRET: solo decodifica y chequea expiración (útil en test).
+ */
 export async function verifyAuthToken(
   token: string,
-  secret = process.env.JWT_SECRET ?? "",
+  secret = process.env.JWT_SECRET,
 ): Promise<JwtPayload> {
-  if (!secret) {
-    throw new Error("JWT_SECRET no configurado");
+  if (secret) {
+    const { payload } = await jwtVerify(token, encoder.encode(secret));
+    return payload as JwtPayload;
   }
 
-  const { payload } = await jwtVerify(token, encoder.encode(secret));
-  return payload as JwtPayload;
+  // Fallback local de firma propia (modo demo sin AUTH_API_URL)
+  if (!process.env.AUTH_API_URL?.trim()) {
+    const { payload } = await jwtVerify(
+      token,
+      encoder.encode("pulso-local-dev-secret"),
+    );
+    return payload as JwtPayload;
+  }
+
+  // API Auth remota sin secreto configurado: confiar en estructura + exp
+  const payload = decodeJwt(token) as JwtPayload;
+  if (isTokenExpired(token)) {
+    throw new Error("Token expirado");
+  }
+  return payload;
 }
 
-/** Mapea claims del JWT a el modelo User de la app. */
+/** Mapea claims del JWT de API Auth al modelo User de la app. */
 export function mapPayloadToUser(payload: JwtPayload, fallbackUsername?: string): User {
-  const clienteId =
-    String(payload.clienteId ?? payload.ClienteId ?? payload.cid ?? "");
+  const clienteId = String(
+    payload.clienteId ?? payload.ClienteId ?? payload.cid ?? payload.apiMode ?? "",
+  );
   const companyName = String(
-    payload.companyName ?? payload.CompanyName ?? payload.empresa ?? "Cliente",
+    payload.companyName ??
+      payload.CompanyName ??
+      payload.empresa ??
+      "isGestion",
   );
   const username = String(
-    payload.unique_name ?? payload.name ?? fallbackUsername ?? payload.sub ?? "usuario",
+    payload.username ??
+      payload.unique_name ??
+      fallbackUsername ??
+      payload.sub ??
+      "usuario",
   );
+  const id = String(payload.userId ?? payload.sub ?? username);
 
   return {
-    id: String(payload.sub ?? username),
+    id,
     username,
     displayName: String(payload.name ?? username),
     email: payload.email ? String(payload.email) : undefined,
     clienteId,
     companyName,
+    roles: payload.role
+      ? [String(payload.role)]
+      : undefined,
   };
 }
 

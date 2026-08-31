@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Button, Card, TextField } from "@/utils/ui";
-import { useAuth } from "@/utils/AuthProvider";
+import { Card, TextField } from "@/components/ui";
+import { MyButtons } from "@/utils/MyButtons";
+import { useAuth } from "@/components/providers/AuthProvider";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
@@ -43,51 +45,60 @@ export default function LoginPage() {
 
   return (
     <div className={styles.page}>
-      <Card className={styles.card}>
-        <div className={styles.brand}>
-          <div className={styles.brandMark}>Pulso</div>
-          <p className={styles.brandSub}>Copilot on-premise · ISG</p>
-        </div>
+      <div className={styles.shell}>
+        <Card className={styles.card}>
+          <div className={styles.brand}>
+            <Image
+              src="/logos/isg.png"
+              alt="isGestion"
+              width={320}
+              height={96}
+              priority
+              className={styles.logo}
+            />
+            <p className={styles.brandSub}>Pulso</p>
+          </div>
 
-        <form className={styles.form} onSubmit={handleSubmit} noValidate>
-          <TextField
-            label="Usuario"
-            name="username"
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={loading}
-            required
-          />
-          <TextField
-            label="Contraseña"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
-            required
-          />
+          <form className={styles.form} onSubmit={handleSubmit} noValidate>
+            <TextField
+              label="Usuario"
+              name="username"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loading}
+              required
+            />
+            <TextField
+              label="Contraseña"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              required
+            />
 
-          {error ? <div className={styles.error}>{error}</div> : null}
+            {error ? <div className={styles.error}>{error}</div> : null}
 
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            fullWidth
-            className={styles.submit}
-            disabled={loading || !username || !password}
-          >
-            {loading ? "Ingresando…" : "Ingresar"}
-          </Button>
-        </form>
+            <MyButtons
+              type="submit"
+              color="primary"
+              size="large"
+              fullWidth
+              className={styles.submit}
+              disabled={loading || !username || !password}
+            >
+              {loading ? "Ingresando…" : "Ingresar"}
+            </MyButtons>
+          </form>
 
-        <p className={styles.hint}>
-          Autenticación vía API Auth local de la instancia del cliente.
-        </p>
-      </Card>
+          <p className={styles.hint}>
+            Autenticación vía API Auth de la instancia.
+          </p>
+        </Card>
+      </div>
     </div>
   );
 }

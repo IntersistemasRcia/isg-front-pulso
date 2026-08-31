@@ -1,12 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decodeJwt } from "jose";
+import { SignJWT, decodeJwt } from "jose";
 import { isTokenExpired, mapPayloadToUser } from "@/utils/auth";
 import { AUTH_COOKIE_NAME } from "@/utils/constants";
 import type { LoginCredentials, LoginResponse } from "@/types";
 
+/** Credenciales locales solo si AUTH_API_URL está vacía. */
+const LOCAL_USER = process.env.LOCAL_AUTH_USER || "demo";
+const LOCAL_PASS = process.env.LOCAL_AUTH_PASSWORD || "demo";
+const LOCAL_JWT_SECRET =
+  process.env.JWT_SECRET || "pulso-local-dev-secret";
+
+/** Path del login en API Auth (.NET). */
+const AUTH_LOGIN_PATH = "/api/Auth/Login";
+
+async function issueLocalToken(username: string): Promise<{
+  token: string;
+  expiresAt: string;
+  user: LoginResponse["user"];
+}> {
+  const expiresInSeconds = 60 * 60 * 8;
+  const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+
+  const token = await new SignJWT({
+    sub: "local-demo",
+    name: "Usuario Demo",
+    username,
+    userId: "local-demo",
+    clienteId: "LOCAL-001",
+    companyName: "ISG Demo",
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(exp)
+    .sign(new TextEncoder().encode(LOCAL_JWT_SECRET));
+
+  return {
+    token,
+    expiresAt: new Date(exp * 1000).toISOString(),
+    user: {
+      id: "local-demo",
+      username,
+      displayName: "Usuario Demo",
+      clienteId: "LOCAL-001",
+      companyName: "ISG Demo",
+    },
+  };
+}
+
+function buildAuthResponse(
+  token: string,
+  user: LoginResponse["user"],
+  expiresAt?: string,
+) {
+  const response: LoginResponse = { token, expiresAt, user };
+  const res = NextResponse.json(response);
+  const maxAge = expiresAt
+    ? Math.max(Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000), 0)
+    : 60 * 60 * 8;
+
+  res.cookies.set(AUTH_COOKIE_NAME, token, {
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+  });
+
+  return res;
+}
+
 /**
- * Proxy de login hacia la API Auth existente del cliente (on-premise).
- * POST /api/auth/login
+ * Proxy de login hacia API Auth.
+ * Body hacia Auth: { usuario, password }
+ * Response Auth: { token, validTo }
+ * Si AUTH_API_URL está vacía → login local demo/demo.
  */
 export async function POST(request: NextRequest) {
   let body: LoginCredentials;
@@ -24,29 +90,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const authApiUrl = process.env.AUTH_API_URL;
+  const authApiUrl = process.env.AUTH_API_URL?.trim();
 
-  // Modo desarrollo sin API Auth: emite un JWT de prueba firmado localmente
   if (!authApiUrl) {
-    return NextResponse.json(
-      {
-        message:
-          "AUTH_API_URL no configurada. Defina la URL de API_Auth en las variables de entorno.",
-      },
-      { status: 503 },
-    );
+    if (body.username !== LOCAL_USER || body.password !== LOCAL_PASS) {
+      return NextResponse.json(
+        {
+          message: `Credenciales inválidas. Modo local: usuario "${LOCAL_USER}" / contraseña "${LOCAL_PASS}".`,
+        },
+        { status: 401 },
+      );
+    }
+
+    const local = await issueLocalToken(body.username);
+    return buildAuthResponse(local.token, local.user, local.expiresAt);
   }
 
   try {
-    const upstream = await fetch(`${authApiUrl.replace(/\/$/, "")}/api/auth/login`, {
+    const loginUrl = `${authApiUrl.replace(/\/$/, "")}${AUTH_LOGIN_PATH}`;
+    const upstream = await fetch(loginUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        username: body.username,
+        usuario: body.username,
         password: body.password,
-        // Variantes comunes de APIs .NET
-        Usuario: body.username,
-        Password: body.password,
       }),
       cache: "no-store",
     });
@@ -55,15 +122,15 @@ export async function POST(request: NextRequest) {
 
     if (!upstream.ok) {
       const message =
+        (raw.Mensaje as string) ||
         (raw.message as string) ||
         (raw.Message as string) ||
+        (raw.title as string) ||
         "Credenciales inválidas";
       return NextResponse.json({ message }, { status: upstream.status });
     }
 
-    const token = String(
-      raw.token ?? raw.Token ?? raw.access_token ?? raw.accessToken ?? "",
-    );
+    const token = String(raw.token ?? raw.Token ?? "");
 
     if (!token) {
       return NextResponse.json(
@@ -80,27 +147,20 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = decodeJwt(token);
-    const user = mapPayloadToUser(payload as Parameters<typeof mapPayloadToUser>[0], body.username);
+    const user = mapPayloadToUser(
+      payload as Parameters<typeof mapPayloadToUser>[0],
+      body.username,
+    );
 
-    const response: LoginResponse = {
-      token,
-      expiresAt: payload.exp
-        ? new Date(payload.exp * 1000).toISOString()
-        : undefined,
-      user,
-    };
+    const validTo = raw.validTo ?? raw.ValidTo;
+    const expiresAt =
+      typeof validTo === "string"
+        ? validTo
+        : payload.exp
+          ? new Date(payload.exp * 1000).toISOString()
+          : undefined;
 
-    const res = NextResponse.json(response);
-    res.cookies.set(AUTH_COOKIE_NAME, token, {
-      httpOnly: false,
-      sameSite: "lax",
-      path: "/",
-      maxAge: payload.exp
-        ? Math.max(payload.exp - Math.floor(Date.now() / 1000), 0)
-        : 60 * 60 * 8,
-    });
-
-    return res;
+    return buildAuthResponse(token, user, expiresAt);
   } catch (error) {
     console.error("[auth/login]", error);
     return NextResponse.json(

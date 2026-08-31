@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Source_Sans_3, JetBrains_Mono } from "next/font/google";
-import { AppProviders } from "@/utils/AppProviders";
+import { AppProviders } from "@/components/providers/AppProviders";
 import "./globals.css";
 
 const sourceSans = Source_Sans_3({
@@ -16,8 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pulso ISG | Copilot",
-  description: "Chatbot / IA Copilot on-premise para clientes ISG",
+  title: "ISG Pulso",
+  description: "Chatbot / IA para clientes ISG",
 };
 
 export default function RootLayout({
