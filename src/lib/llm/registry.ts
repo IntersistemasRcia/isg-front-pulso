@@ -1,4 +1,5 @@
 import type { ByokProviderId, ModelDefinition } from "./types";
+import { getLocalLlmDefinition, LOCAL_LLM_MODEL_ID } from "./localLlmConfig";
 
 export const MODEL_STORAGE_KEY = "pulso.chat.modelId";
 
@@ -69,11 +70,13 @@ export const MODEL_CATALOG: readonly ModelDefinition[] = [
     provider: "groq",
     providerModelId: "openai/gpt-oss-120b",
     envKeys: ["GROQ_API_KEY"],
-    promptMode: "minimal",
+    promptMode: "tool-only",
     maxInputTokens: 8000,
-    inputHeadroomRatio: 0.65,
-    toolResultMaxBytes: 4096,
-    toolResultMaxRows: 25,
+    inputHeadroomRatio: 0.55,
+    toolResultMaxBytes: 2048,
+    toolResultMaxRows: 15,
+    messageWindowSize: 4,
+    relevantSpTopK: 4,
   },
   {
     id: "gpt-4o-mini",
@@ -117,11 +120,20 @@ export const MODEL_CATALOG: readonly ModelDefinition[] = [
   },
 ];
 
+/** Catálogo estático + modelo local dinámico (si está configurado en env). */
+export function getFullModelCatalog(): ModelDefinition[] {
+  const local = getLocalLlmDefinition();
+  return local ? [...MODEL_CATALOG, local] : [...MODEL_CATALOG];
+}
+
 export function getModelDefinition(modelId: string): ModelDefinition | undefined {
   const resolvedId = normalizeModelId(modelId);
+  if (resolvedId === LOCAL_LLM_MODEL_ID) {
+    return getLocalLlmDefinition() ?? undefined;
+  }
   return MODEL_CATALOG.find((m) => m.id === resolvedId);
 }
 
 export function listModelsByTier(tier: ModelDefinition["tier"]): ModelDefinition[] {
-  return MODEL_CATALOG.filter((m) => m.tier === tier);
+  return getFullModelCatalog().filter((m) => m.tier === tier);
 }

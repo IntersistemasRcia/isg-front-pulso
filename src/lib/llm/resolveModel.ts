@@ -4,12 +4,13 @@ import { createGroq } from "@ai-sdk/groq";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getByokApiKey } from "./byokStorage";
-import { isValidGoogleAiStudioKey } from "./googleApiKey";
+import { isValidGoogleGeminiKey } from "./googleApiKey";
 import { buildQuotaExceededMessage } from "./llmErrors";
+import { getLocalLlmConnection, LOCAL_LLM_MODEL_ID } from "./localLlmConfig";
 import {
   DEFAULT_MODEL_ID,
+  getFullModelCatalog,
   getModelDefinition,
-  MODEL_CATALOG,
   normalizeModelId,
 } from "./registry";
 import type { ApiKeySource, ByokProviderId, ModelDefinition } from "./types";
@@ -55,26 +56,42 @@ function firstEnv(keys: string[] | undefined): string | null {
   return null;
 }
 
+function isGoogleProvider(provider: ModelDefinition["provider"]): boolean {
+  return provider === "google" || provider === "google-free";
+}
+
 async function resolveApiKey(
   userId: string,
   definition: ModelDefinition,
 ): Promise<{ apiKey: string; source: ApiKeySource } | null> {
+  if (definition.provider === "openai-compatible") {
+    const conn = getLocalLlmConnection();
+    if (!conn) return null;
+    return { apiKey: conn.apiKey, source: "free" };
+  }
+
   if (definition.byokProvider) {
     const byok = await getByokApiKey(userId, definition.byokProvider);
     if (byok) {
+      if (definition.byokProvider === "google" && !isValidGoogleGeminiKey(byok)) {
+        return null;
+      }
       return { apiKey: byok, source: "byok" };
     }
   }
 
   const company = firstEnv(definition.envKeys);
   if (company && definition.tier === "premium") {
+    if (isGoogleProvider(definition.provider) && !isValidGoogleGeminiKey(company)) {
+      return null;
+    }
     return { apiKey: company, source: "company" };
   }
 
   if (definition.tier === "free") {
     const freeKey = firstEnv(definition.envKeys);
     if (freeKey) {
-      if (definition.provider === "google-free" && !isValidGoogleAiStudioKey(freeKey)) {
+      if (isGoogleProvider(definition.provider) && !isValidGoogleGeminiKey(freeKey)) {
         return null;
       }
       return { apiKey: freeKey, source: "free" };
@@ -92,6 +109,17 @@ function buildLanguageModel(
     case "openai": {
       const openai = createOpenAI({ apiKey });
       return openai(definition.providerModelId);
+    }
+    case "openai-compatible": {
+      const conn = getLocalLlmConnection();
+      if (!conn) {
+        throw new Error("LOCAL_LLM no configurado");
+      }
+      const client = createOpenAI({
+        baseURL: conn.baseURL,
+        apiKey: conn.apiKey,
+      });
+      return client(definition.providerModelId);
     }
     case "anthropic": {
       const anthropic = createAnthropic({ apiKey });
@@ -141,7 +169,7 @@ export async function getFallbackChain(
   const normalizedId = normalizeModelId(modelId);
   const chain: string[] = [];
 
-  const freeModels = MODEL_CATALOG.filter(
+  const freeModels = getFullModelCatalog().filter(
     (m) => m.tier === "free" && m.id !== normalizedId,
   );
   for (const model of freeModels) {
@@ -158,7 +186,15 @@ export async function getFallbackChain(
     chain.unshift(DEFAULT_MODEL_ID);
   }
 
-  const premiumModels = MODEL_CATALOG.filter(
+  if (
+    normalizedId !== LOCAL_LLM_MODEL_ID &&
+    !chain.includes(LOCAL_LLM_MODEL_ID) &&
+    (await isModelConfigured(userId, LOCAL_LLM_MODEL_ID))
+  ) {
+    chain.unshift(LOCAL_LLM_MODEL_ID);
+  }
+
+  const premiumModels = getFullModelCatalog().filter(
     (m) => m.tier === "premium" && m.id !== normalizedId,
   );
   for (const model of premiumModels) {
@@ -186,5 +222,9 @@ export function companyEnvConfigured(provider: ByokProviderId): boolean {
     anthropic: ["ANTHROPIC_API_KEY"],
     google: ["GOOGLE_API_KEY"],
   };
-  return Boolean(firstEnv(map[provider]));
+  const key = firstEnv(map[provider]);
+  if (provider === "google") {
+    return isValidGoogleGeminiKey(key);
+  }
+  return Boolean(key);
 }

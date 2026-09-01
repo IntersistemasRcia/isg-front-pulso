@@ -1,6 +1,7 @@
 import { listByokConfigured } from "./byokStorage";
 import { isGoogleFreeKeyConfigured } from "./googleApiKey";
-import { MODEL_CATALOG } from "./registry";
+import { isLocalLlmConfigured } from "./localLlmConfig";
+import { getFullModelCatalog } from "./registry";
 import { companyEnvConfigured, isModelConfigured } from "./resolveModel";
 import type { ProviderAvailability } from "./types";
 
@@ -13,9 +14,12 @@ let warnedInvalidGoogleKey = false;
 
 /** Indica si el despliegue tiene al menos un modelo free configurado. */
 export function isFreeTierConfigured(): boolean {
-  return MODEL_CATALOG.some(
+  if (isLocalLlmConfigured()) return true;
+
+  return getFullModelCatalog().some(
     (model) =>
       model.tier === "free" &&
+      model.provider !== "openai-compatible" &&
       (model.provider === "google-free"
         ? isGoogleFreeKeyConfigured()
         : model.envKeys?.some((envKey) => Boolean(readEnv(envKey)))),
@@ -26,8 +30,8 @@ export function isFreeTierConfigured(): boolean {
 export function getFreeTierSetupHint(): string {
   return (
     "No hay modelos gratuitos activos. El administrador debe definir " +
-    "GOOGLE_FREE_API_KEY (Gemini 3.6 Flash) en .env.local y reiniciar el servidor. " +
-    "Opcional: GROQ_API_KEY para GPT-OSS 120B (Groq)."
+    "GOOGLE_FREE_API_KEY (Gemini, formato AIza o AQ.) en .env.local, " +
+    "GROQ_API_KEY para GPT-OSS 120B, o LOCAL_LLM_ENABLED para un LLM local."
   );
 }
 
@@ -36,7 +40,7 @@ export async function getAvailableProviders(userId: string): Promise<ProviderAva
   const byok = await listByokConfigured(userId);
   const results: ProviderAvailability[] = [];
 
-  for (const model of MODEL_CATALOG) {
+  for (const model of getFullModelCatalog()) {
     let available = await isModelConfigured(userId, model.id);
 
     if (model.provider === "google-free" && !isGoogleFreeKeyConfigured()) {
@@ -44,7 +48,7 @@ export async function getAvailableProviders(userId: string): Promise<ProviderAva
       if (rawKey && !warnedInvalidGoogleKey) {
         warnedInvalidGoogleKey = true;
         console.warn(
-          "[llm] GOOGLE_FREE_API_KEY tiene formato inválido (debe empezar con AIza). " +
+          "[llm] GOOGLE_FREE_API_KEY tiene formato inválido (debe empezar con AIza o AQ.). " +
             "Modelos Gemini free deshabilitados.",
         );
       }
