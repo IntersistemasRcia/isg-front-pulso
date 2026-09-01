@@ -69,9 +69,11 @@ export const MODEL_CATALOG: readonly ModelDefinition[] = [
     provider: "groq",
     providerModelId: "openai/gpt-oss-120b",
     envKeys: ["GROQ_API_KEY"],
-    promptMode: "compact",
+    promptMode: "minimal",
     maxInputTokens: 8000,
-    inputHeadroomRatio: 0.75,
+    inputHeadroomRatio: 0.65,
+    toolResultMaxBytes: 4096,
+    toolResultMaxRows: 25,
   },
   {
     id: "gpt-4o-mini",

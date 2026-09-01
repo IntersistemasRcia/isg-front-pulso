@@ -4,6 +4,7 @@ import { createGroq } from "@ai-sdk/groq";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getByokApiKey } from "./byokStorage";
+import { isValidGoogleAiStudioKey } from "./googleApiKey";
 import { buildQuotaExceededMessage } from "./llmErrors";
 import {
   DEFAULT_MODEL_ID,
@@ -73,6 +74,9 @@ async function resolveApiKey(
   if (definition.tier === "free") {
     const freeKey = firstEnv(definition.envKeys);
     if (freeKey) {
+      if (definition.provider === "google-free" && !isValidGoogleAiStudioKey(freeKey)) {
+        return null;
+      }
       return { apiKey: freeKey, source: "free" };
     }
   }

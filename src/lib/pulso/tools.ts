@@ -5,7 +5,7 @@ import { getSpNombre, getSpParametros } from "@/lib/pulso/catalog";
 import { selectRelevantSps } from "@/lib/pulso/selectRelevantSps";
 import { formatSpParamHint } from "@/lib/pulso/spParamResolver";
 import type { SpArquitectura } from "@/lib/pulso/types";
-import { truncateToolResult } from "@/lib/chat/truncateToolResult";
+import { truncateToolResult, type TruncateToolResultOptions } from "@/lib/chat/truncateToolResult";
 import { coerceParamsForSp } from "@/lib/pulso/spParamResolver";
 
 const parametroItemSchema = z.object({
@@ -55,6 +55,7 @@ export function normalizeToolParametros(
 export function buildEjecutarConsultaPulsoTool(
   sessionToken: string,
   catalog: SpArquitectura[],
+  truncateOptions?: TruncateToolResultOptions,
 ) {
   return tool({
     description: [
@@ -116,12 +117,12 @@ export function buildEjecutarConsultaPulsoTool(
             warnings: warnings.length ? warnings : undefined,
             avisoUsuario:
               "Explicá el problema en una frase simple al usuario (sin jerga técnica) y ofrecé reintentar o ajustar la búsqueda.",
-          });
+          }, truncateOptions);
         }
         return truncateToolResult({
           ...result,
           warnings: warnings.length ? warnings : undefined,
-        });
+        }, truncateOptions);
       } catch (error) {
         const message =
           error instanceof Error
@@ -188,10 +189,14 @@ export function buildListarCatalogoPulsoTool(catalog: SpArquitectura[]) {
 export function buildPulsoTools(
   sessionToken: string,
   catalog: SpArquitectura[] = [],
-  options?: { includeCatalogTool?: boolean },
+  options?: { includeCatalogTool?: boolean; truncateOptions?: TruncateToolResultOptions },
 ) {
   const tools = {
-    ejecutarConsultaPulso: buildEjecutarConsultaPulsoTool(sessionToken, catalog),
+    ejecutarConsultaPulso: buildEjecutarConsultaPulsoTool(
+      sessionToken,
+      catalog,
+      options?.truncateOptions,
+    ),
     ...(options?.includeCatalogTool && catalog.length > 0
       ? { listarCatalogoPulso: buildListarCatalogoPulsoTool(catalog) }
       : {}),
