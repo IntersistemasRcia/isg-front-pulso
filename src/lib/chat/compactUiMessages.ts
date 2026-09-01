@@ -36,8 +36,18 @@ function clipAssistantText(text: string): string {
   return `${trimmed.slice(0, ASSISTANT_TEXT_MAX_CHARS)}… [respuesta recortada]`;
 }
 
+function shouldCompactHistory(definition?: ModelDefinition): boolean {
+  if (!definition) return false;
+  if (definition.provider === "openai-compatible") return true;
+  if (definition.promptMode === "tool-only") return true;
+  if (definition.maxInputTokens != null && definition.maxInputTokens <= 10_000) {
+    return true;
+  }
+  return false;
+}
+
 /**
- * Compacta historial para modelos con límite bajo (Groq ~8k TPM):
+ * Compacta historial para modelos con límite bajo (Groq ~8k TPM, LLM local):
  * - Tool outputs de turnos anteriores → resumen de 1 línea.
  * - Texto de asistente anterior → recorte corto.
  */
@@ -45,7 +55,7 @@ export function compactUiMessagesForModel(
   messages: UIMessage[],
   definition?: ModelDefinition,
 ): UIMessage[] {
-  if (!definition?.maxInputTokens || definition.maxInputTokens > 10_000) {
+  if (!shouldCompactHistory(definition)) {
     return messages;
   }
 
