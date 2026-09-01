@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/utils/AuthProvider";
+import { useAuth } from "@/components/providers/AuthProvider";
 import styles from "./page.module.css";
 
 /**

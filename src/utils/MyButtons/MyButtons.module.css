@@ -1,0 +1,84 @@
+.button {
+  text-transform: none !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid transparent !important;
+  transition: var(--transition-button) !important;
+  box-shadow: none !important;
+}
+
+.button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Primary = naranja ISG */
+.colorPrimary {
+  background-color: var(--color-orange) !important;
+  color: var(--color-text-inverse) !important;
+}
+
+.colorPrimary:hover:not(:disabled) {
+  background-color: var(--color-orange-dark) !important;
+  box-shadow: 0 6px 16px rgba(255, 106, 0, 0.28) !important;
+}
+
+.colorPrimary:focus-visible {
+  outline: 2px solid var(--color-orange-light);
+  outline-offset: 2px;
+}
+
+/* Secondary = violeta ISG */
+.colorSecondary {
+  background-color: var(--color-violet) !important;
+  color: var(--color-text-inverse) !important;
+}
+
+.colorSecondary:hover:not(:disabled) {
+  background-color: #5824b0 !important;
+  box-shadow: 0 6px 16px rgba(106, 46, 210, 0.3) !important;
+}
+
+.colorSecondary:focus-visible {
+  outline: 2px solid #b79aef;
+  outline-offset: 2px;
+}
+
+/* Tamaños */
+.sizeSmall {
+  min-height: 36px !important;
+  padding: 0.35rem 0.9rem !important;
+  font-size: var(--font-size-sm) !important;
+}
+
+.sizeMedium {
+  min-height: 44px !important;
+  padding: 0.55rem 1.15rem !important;
+  font-size: var(--font-size-md) !important;
+}
+
+.sizeLarge {
+  min-height: 52px !important;
+  padding: 0.7rem 1.4rem !important;
+  font-size: var(--font-size-lg) !important;
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+@media (max-width: 480px) {
+  .sizeLarge {
+    min-height: 48px !important;
+    padding: 0.6rem 1.1rem !important;
+  }
+}

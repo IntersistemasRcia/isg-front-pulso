@@ -1,0 +1,110 @@
+.sidebar {
+  background: var(--color-sidebar);
+  color: var(--color-text-inverse);
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 1rem;
+  gap: 1.25rem;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.5rem;
+  text-align: center;
+}
+
+.brandLogoBlock {
+  width: min(100%, 248px);
+}
+
+.brandLogo {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.brandTitle {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.navItem {
+  display: block;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  transition: background-color var(--transition-fast);
+}
+
+.navItem:hover,
+.navItemActive {
+  background: var(--color-sidebar-hover);
+  color: #fff;
+}
+
+.history {
+  flex: 1;
+  overflow: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 1rem;
+}
+
+.historyTitle {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+  margin-bottom: 0.65rem;
+  padding: 0 0.5rem;
+}
+
+.historyEmpty {
+  font-size: var(--font-size-sm);
+  opacity: 0.55;
+  padding: 0 0.5rem;
+}
+
+.userBlock {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.userName {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  padding: 0 0.5rem;
+}
+
+.userMeta {
+  font-size: var(--font-size-xs);
+  opacity: 0.65;
+  padding: 0 0.5rem;
+}
+
+.logout {
+  /* MyButtons primary ya define colores; solo ajuste en sidebar */
+  margin-top: 0.15rem;
+}
+
+@media (max-width: 860px) {
+  .sidebar {
+    display: none;
+  }
+}

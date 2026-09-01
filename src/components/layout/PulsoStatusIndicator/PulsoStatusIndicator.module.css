@@ -1,0 +1,58 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.wrap:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotOk {
+  background: var(--color-success);
+}
+
+.dotError {
+  background: var(--color-error);
+}
+
+.dotLoading {
+  background: var(--color-orange);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.label {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.meta {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}

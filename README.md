@@ -17,11 +17,28 @@ npm run dev
 
 Abrir [http://localhost:3000](http://localhost:3000).
 
-## Arquitectura
+## Autenticación
 
-- **On-premise por cliente**: cada instancia usa rutas relativas `/api/...` o `NEXT_PUBLIC_API_URL`.
-- **Auth**: `POST /api/auth/login` proxy a `AUTH_API_URL` (API_Auth). JWT en cookie + localStorage.
-- **Chat**: `POST /api/chat` valida JWT, llama OpenAI con tools (SPs) y despacha al agente local `.NET` (`LOCAL_AGENT_URL` + `X-API-Key`).
+- Dev (`npm run dev`): usa [`.env.development`](.env.development) → `AUTH_API_URL=http://api.intersistemas.ar:8601`
+- Prod (`npm start`): usa [`.env.production`](.env.production) → `AUTH_API_URL=http://localhost:8601` (mismo servidor)
+- Proxy Next: `POST /api/auth/login` → `POST {AUTH_API_URL}/api/Auth/Login` con `{ usuario, password }`
+- Secretos (`OPENAI_API_KEY`, `JWT_SECRET`, claves LLM) van en `.env.local` (no se versionan)
+
+## Multi-LLM, tier free y BYOK
+
+Pulso soporta varios proveedores de modelos con prioridad de claves:
+
+1. **BYOK del usuario** (claves cifradas en `data/byok/`, ver Configuración IA)
+2. **Claves de empresa** en variables de entorno (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`)
+3. **Tier free del despliegue** (`GOOGLE_FREE_API_KEY`, `GROQ_API_KEY`)
+
+Modelos gratuitos por defecto: **Gemini 3.6 Flash** y **GPT-OSS 120B** vía Groq (opcional).
+
+Modelos premium: GPT-4o, Claude Sonnet, Gemini 2.5 Pro (requieren BYOK o claves de empresa).
+
+Documentación detallada: [docs/LLM.md](docs/LLM.md).
+
+Integración ERP: [docs/PULSO_API.md](docs/PULSO_API.md) ([isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso)).
 
 ## Ramas
 
@@ -30,4 +47,6 @@ Abrir [http://localhost:3000](http://localhost:3000).
 
 ## Estilos
 
-CSS Modules + wrappers MUI en `@/utils/ui` (no importar `@mui/material` desde páginas).
+CSS Modules + wrappers MUI en `@/components/ui` (no importar `@mui/material` desde páginas).
+
+Helpers puros en `src/utils/`. Orquestación de chat en `src/lib/chat/`. Resolución de modelos en `src/lib/llm/`.
