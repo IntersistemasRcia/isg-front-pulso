@@ -117,7 +117,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
 
   const userQueryContext = buildUserQueryContext(messages);
   const followUpContext = buildFollowUpContextHint(messages);
-  const relevantCatalog = selectRelevantSps(userQueryContext, catalog);
+  const spTopK = definition?.relevantSpTopK;
+  const relevantCatalog = selectRelevantSps(userQueryContext, catalog, spTopK);
   const messagesTokens = estimateMessagesTokens(messages);
   const historyTokens = estimateTokens(historySummary ?? "");
   const toolResultsKb = estimateToolResultsKb(messages);

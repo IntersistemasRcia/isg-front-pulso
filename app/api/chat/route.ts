@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import type { UIMessage } from "ai";
-import { DEFAULT_MODEL_ID, normalizeModelId } from "@/lib/llm";
+import { DEFAULT_MODEL_ID, getModelDefinition, normalizeModelId } from "@/lib/llm";
 import { runChatWithModelFallback } from "@/lib/llm/runChatWithFallback";
 import { normalizeChatMessages } from "@/lib/chat/normalizeChatMessages";
 import { windowMessages } from "@/lib/chat/windowMessages";
@@ -46,7 +46,9 @@ export async function POST(request: NextRequest) {
   const requestedModelId = normalizeModelId(
     body.modelId?.trim() || DEFAULT_MODEL_ID,
   );
-  const { messages, historySummary } = windowMessages(normalizedMessages);
+  const modelDef = getModelDefinition(requestedModelId);
+  const windowSize = modelDef?.messageWindowSize ?? 12;
+  const { messages, historySummary } = windowMessages(normalizedMessages, windowSize);
 
   let catalog: SpArquitectura[] = [];
   try {
