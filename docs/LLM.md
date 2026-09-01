@@ -89,12 +89,34 @@ Configuración 100% en el servidor. El front solo consume `/api/chat/providers`.
 LOCAL_LLM_ENABLED=1
 LOCAL_LLM_BASE_URL=http://127.0.0.1:11434/v1   # Ollama
 LOCAL_LLM_API_KEY=ollama
-LOCAL_LLM_MODEL=llama3.1
+LOCAL_LLM_MODEL=qwen2.5:7b
 LOCAL_LLM_LABEL=LLM Local (Ollama)
-LOCAL_LLM_MAX_INPUT_TOKENS=32768
+LOCAL_LLM_MAX_INPUT_TOKENS=8192
+LOCAL_LLM_MAX_AGENT_STEPS=3
 ```
 
 Compatible con Ollama, LM Studio, vLLM, LocalAI, etc. Cambiar de motor = cambiar env, sin tocar el front.
+
+### Rendimiento (Ollama / CPU)
+
+Pulso optimiza automáticamente el modelo local:
+
+| Ajuste | Valor | Motivo |
+| --- | --- | --- |
+| `promptMode` | `tool-only` | Catálogo vía tool, menos tokens por inferencia |
+| `messageWindowSize` | 4 | Historial corto |
+| `toolResultMaxRows` | 15 | Menos datos ERP en el contexto |
+| `maxAgentSteps` | 3 (env) | Menos idas y vueltas al LLM |
+| `streaming` | sí | Respuesta progresiva; ayuda con timeouts IIS/ARR |
+
+Recomendaciones de infra:
+
+- Modelo cuantizado (`qwen2.5:7b-q4_K_M`) o más chico (`qwen2.5:3b`) en CPU.
+- `OLLAMA_KEEP_ALIVE=24h` para evitar cold start.
+- IIS ARR: timeout del proxy ≥ **300 s** en `/api/chat`.
+- `POST /api/chat` declara `maxDuration = 300` en Next.js.
+
+Si la consulta sigue lenta, bajá `LOCAL_LLM_MAX_AGENT_STEPS=2` o usá Gemini/Groq para uso diario.
 
 ## Variables de entorno
 

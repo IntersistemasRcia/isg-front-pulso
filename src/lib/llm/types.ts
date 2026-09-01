@@ -39,6 +39,10 @@ export interface ModelDefinition {
   messageWindowSize?: number;
   /** SPs relevantes en el prompt (ranking léxico). */
   relevantSpTopK?: number;
+  /** Pasos máximos del agente (tool loops). Por defecto 5. */
+  maxAgentSteps?: number;
+  /** Si true, responde con streaming SSE (mejor UX y timeouts de proxy). */
+  streaming?: boolean;
 }
 
 export interface ProviderAvailability {

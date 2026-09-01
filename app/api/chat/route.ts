@@ -12,7 +12,8 @@ import {
 import { requireAuth } from "@/utils/requireAuth";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+/** LLM local (Ollama) puede superar 60s; IIS/ARR debe tener timeout ≥ 300s. */
+export const maxDuration = 300;
 
 /**
  * Orquestador de chat Pulso:
