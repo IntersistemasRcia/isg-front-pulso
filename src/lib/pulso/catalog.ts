@@ -70,7 +70,7 @@ export function formatArquitecturaForPrompt(
   if (mode === "minimal") {
     const lines = catalog.map((sp) => `• ${getSpNombre(sp)}`);
     return [
-      "Consultas candidatas (solo nombres; usá listarCatalogoPulso si necesitás parámetros):",
+      "Consultas ERP candidatas (USO INTERNO — elegí una vos; no preguntes al usuario cuál usar):",
       ...lines,
     ].join("\n");
   }
@@ -82,7 +82,7 @@ export function formatArquitecturaForPrompt(
     });
 
     return [
-      "Catálogo ERP (GET /SPs_arquitectura vía sys.parameters; sin código SQL):",
+      "Consultas ERP candidatas (USO INTERNO — elegí la adecuada y ejecutá; no menciones estos nombres al usuario):",
       ...lines,
     ].join("\n");
   }

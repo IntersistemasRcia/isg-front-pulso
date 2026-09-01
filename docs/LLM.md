@@ -103,10 +103,11 @@ Pulso optimiza automáticamente el modelo local:
 
 | Ajuste | Valor | Motivo |
 | --- | --- | --- |
-| `promptMode` | `tool-only` | Catálogo vía tool, menos tokens por inferencia |
+| `promptMode` | `compact` | Catálogo reducido en prompt + params; evita preguntar SP al usuario |
+| `requireToolOnFirstStep` | sí | Obliga ejecutar consulta antes de hablar |
 | `messageWindowSize` | 4 | Historial corto |
 | `toolResultMaxRows` | 15 | Menos datos ERP en el contexto |
-| `maxAgentSteps` | 3 (env) | Menos idas y vueltas al LLM |
+| `maxAgentSteps` | 2 (env) | 1 tool + 1 respuesta |
 | `streaming` | sí | Respuesta progresiva; ayuda con timeouts IIS/ARR |
 
 Recomendaciones de infra:
@@ -117,6 +118,20 @@ Recomendaciones de infra:
 - `POST /api/chat` declara `maxDuration = 300` en Next.js.
 
 Si la consulta sigue lenta, bajá `LOCAL_LLM_MAX_AGENT_STEPS=2` o usá Gemini/Groq para uso diario.
+
+### Logs y diagnóstico de Ollama (Windows)
+
+`ollama ps` solo muestra modelos cargados en memoria; **no escribe un archivo de log** por defecto.
+
+| Qué ver | Cómo |
+| --- | --- |
+| Modelo activo | `ollama ps` en PowerShell |
+| Probar inferencia directa | `ollama run qwen2.5:7b "hola"` |
+| Logs verbosos | Detener servicio Ollama y ejecutar en consola: `$env:OLLAMA_DEBUG="1"; ollama serve` |
+| Carpeta de datos | `%LOCALAPPDATA%\Ollama\` (modelos, config) |
+| Logs de Pulso | Consola o salida del servicio Windows donde corre `npm start` / Node — buscá líneas `[chat] model=local-llm` |
+
+Si Ollama corre como **servicio Windows**, los logs van al visor de eventos o no se persisten; para depurar, ejecutalo manualmente con `ollama serve` en una ventana de consola.
 
 ## Variables de entorno
 

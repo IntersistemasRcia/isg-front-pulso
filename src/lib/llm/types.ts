@@ -43,6 +43,8 @@ export interface ModelDefinition {
   maxAgentSteps?: number;
   /** Si true, responde con streaming SSE (mejor UX y timeouts de proxy). */
   streaming?: boolean;
+  /** Obliga tool call en el paso 0 (evita que modelos locales pregunten al usuario). */
+  requireToolOnFirstStep?: boolean;
 }
 
 export interface ProviderAvailability {
