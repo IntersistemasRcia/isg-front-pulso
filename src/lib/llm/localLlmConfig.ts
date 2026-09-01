@@ -53,7 +53,7 @@ export function getLocalLlmDefinition(): ModelDefinition | null {
 
   const label = readEnv("LOCAL_LLM_LABEL") ?? "LLM Local";
   const maxInputTokens = readPositiveInt("LOCAL_LLM_MAX_INPUT_TOKENS", 8192);
-  const maxAgentSteps = readPositiveInt("LOCAL_LLM_MAX_AGENT_STEPS", 3);
+  const maxAgentSteps = readPositiveInt("LOCAL_LLM_MAX_AGENT_STEPS", 2);
 
   return {
     id: LOCAL_LLM_MODEL_ID,
@@ -64,8 +64,8 @@ export function getLocalLlmDefinition(): ModelDefinition | null {
     provider: "openai-compatible",
     providerModelId: conn.providerModelId,
     envKeys: ["LOCAL_LLM_ENABLED", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_MODEL"],
-    /** Catálogo vía tool — menos tokens por inferencia en CPU/GPU local. */
-    promptMode: "tool-only",
+    /** Catálogo compacto en prompt: modelos locales fallan en tool-only sin contexto. */
+    promptMode: "compact",
     maxInputTokens,
     inputHeadroomRatio: 0.65,
     toolResultMaxBytes: 2048,
@@ -74,5 +74,6 @@ export function getLocalLlmDefinition(): ModelDefinition | null {
     relevantSpTopK: 4,
     maxAgentSteps,
     streaming: true,
+    requireToolOnFirstStep: true,
   };
 }

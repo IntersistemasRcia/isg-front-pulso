@@ -75,8 +75,23 @@ function getMaxAgentSteps(definition?: ModelDefinition): number {
   if (definition?.maxAgentSteps != null && definition.maxAgentSteps > 0) {
     return definition.maxAgentSteps;
   }
-  if (definition?.provider === "openai-compatible") return 3;
+  if (definition?.provider === "openai-compatible") return 2;
   return 5;
+}
+
+function buildAgentStepOptions(definition?: ModelDefinition) {
+  if (!definition?.requireToolOnFirstStep) {
+    return {};
+  }
+
+  return {
+    prepareStep: ({ stepNumber }: { stepNumber: number }) => {
+      if (stepNumber === 0) {
+        return { toolChoice: "required" as const };
+      }
+      return {};
+    },
+  };
 }
 
 /**
@@ -138,6 +153,7 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
         tools: prepared.tools,
         stopWhen: stepCountIs(getMaxAgentSteps(definition)),
         maxRetries: 0,
+        ...buildAgentStepOptions(definition),
       };
 
       const pulsoHeaders = {
