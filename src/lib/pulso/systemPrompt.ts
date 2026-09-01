@@ -7,6 +7,7 @@ type BuildSystemPromptOptions = {
   clienteId?: string;
   catalog: SpArquitectura[];
   historySummary?: string;
+  followUpContext?: string;
   promptMode?: PromptCatalogMode;
 };
 
@@ -19,6 +20,7 @@ export function buildPulsoSystemPrompt({
   clienteId,
   catalog,
   historySummary,
+  followUpContext,
   promptMode = "full",
 }: BuildSystemPromptOptions): string {
   const catalogHint =
@@ -38,6 +40,8 @@ export function buildPulsoSystemPrompt({
     "- NUNCA menciones: stored procedures, SP, SQL, parámetros técnicos, nombres como SearchTerm/LikeTerm, APIs ni errores de esquema.",
     "- NUNCA preguntes al usuario qué parámetro técnico usar. Vos resolvés eso con el catálogo y las tools.",
     "- Solo pedí datos de negocio cuando falten y sean imprescindibles, en lenguaje simple. Ejemplos buenos: «¿De qué fechas querés el resumen?» / «¿Buscás por apellido, CUIT o nombre completo?».",
+    "- Para búsquedas de clientes por apellido, nombre o CUIT: usá los parámetros de búsqueda del catálogo del SP de clientes. No pidas fechas si ese SP no tiene DesdeFecha/HastaFecha en su firma.",
+    "- Pedí fechas solo cuando el SP del catálogo requiere DesdeFecha, HastaFecha u otro parámetro de fecha obligatorio.",
     "- Si el usuario ya dio el dato (ej. apellido Pérez, o «usá %»), ejecutá la consulta sin pedir confirmaciones técnicas.",
     "- Presentá resultados con tablas Markdown o viñetas; números claros; sin jerga de sistemas.",
 
@@ -53,6 +57,10 @@ export function buildPulsoSystemPrompt({
 
   if (historySummary) {
     parts.push(historySummary);
+  }
+
+  if (followUpContext) {
+    parts.push(followUpContext);
   }
 
   return parts.join("\n\n");

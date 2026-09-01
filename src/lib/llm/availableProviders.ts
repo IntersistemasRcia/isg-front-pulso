@@ -1,4 +1,5 @@
 import { listByokConfigured } from "./byokStorage";
+import { isGoogleFreeKeyConfigured } from "./googleApiKey";
 import { MODEL_CATALOG } from "./registry";
 import { companyEnvConfigured, isModelConfigured } from "./resolveModel";
 import type { ProviderAvailability } from "./types";
@@ -8,12 +9,16 @@ function readEnv(key: string): string | null {
   return value || null;
 }
 
+let warnedInvalidGoogleKey = false;
+
 /** Indica si el despliegue tiene al menos un modelo free configurado. */
 export function isFreeTierConfigured(): boolean {
   return MODEL_CATALOG.some(
     (model) =>
       model.tier === "free" &&
-      model.envKeys?.some((envKey) => Boolean(readEnv(envKey))),
+      (model.provider === "google-free"
+        ? isGoogleFreeKeyConfigured()
+        : model.envKeys?.some((envKey) => Boolean(readEnv(envKey)))),
   );
 }
 
@@ -32,7 +37,20 @@ export async function getAvailableProviders(userId: string): Promise<ProviderAva
   const results: ProviderAvailability[] = [];
 
   for (const model of MODEL_CATALOG) {
-    const available = await isModelConfigured(userId, model.id);
+    let available = await isModelConfigured(userId, model.id);
+
+    if (model.provider === "google-free" && !isGoogleFreeKeyConfigured()) {
+      const rawKey = readEnv("GOOGLE_FREE_API_KEY");
+      if (rawKey && !warnedInvalidGoogleKey) {
+        warnedInvalidGoogleKey = true;
+        console.warn(
+          "[llm] GOOGLE_FREE_API_KEY tiene formato inválido (debe empezar con AIza). " +
+            "Modelos Gemini free deshabilitados.",
+        );
+      }
+      available = false;
+    }
+
     let configuredVia: ProviderAvailability["configuredVia"];
 
     if (model.byokProvider && byok[model.byokProvider]) {

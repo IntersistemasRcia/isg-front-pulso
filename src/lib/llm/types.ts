@@ -30,6 +30,10 @@ export interface ModelDefinition {
   /** Límite de input del proveedor; con headroom se usa ~75% como techo. */
   maxInputTokens?: number;
   inputHeadroomRatio?: number;
+  /** Límite de bytes para resultados de tools ERP en este modelo. */
+  toolResultMaxBytes?: number;
+  /** Límite de filas para resultados de tools ERP en este modelo. */
+  toolResultMaxRows?: number;
 }
 
 export interface ProviderAvailability {

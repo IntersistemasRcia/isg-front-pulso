@@ -138,8 +138,45 @@ export function isModelUnavailableError(error: unknown): boolean {
   );
 }
 
+export function isHttp413Error(error: unknown): boolean {
+  const unwrapped = unwrapLlmError(error);
+  if (!unwrapped || typeof unwrapped !== "object") return false;
+  const err = unwrapped as { status?: number; statusCode?: number };
+  const status = err.status ?? err.statusCode;
+  return status === 413;
+}
+
+/** Error de autenticación de Google Gemini (clave inválida o formato incorrecto). */
+export function isGoogleAuthError(error: unknown): boolean {
+  const text = getLlmErrorMessage(error).toLowerCase();
+  return (
+    text.includes("invalid authentication credentials") ||
+    text.includes("oauth 2 access token") ||
+    text.includes("api key not valid") ||
+    text.includes("api_key_invalid")
+  );
+}
+
+export function buildGoogleAuthErrorMessage(): string {
+  return (
+    "La clave GOOGLE_FREE_API_KEY del servidor no es válida. " +
+    "Debe ser una API key de Google AI Studio (formato AIzaSy…). " +
+    "Regenerala en https://aistudio.google.com/apikey y reiniciá el servidor."
+  );
+}
+
+/**
+ * Indica si conviene probar otro modelo en la cadena de fallback.
+ * 413 / request too large NO hace fallback (evita saltar a Gemini con clave rota).
+ */
+export function shouldAttemptFallbackModel(error: unknown): boolean {
+  if (isRequestTooLargeError(error) || isHttp413Error(error)) return false;
+  if (isModelUnavailableError(error)) return true;
+  return isRateLimitError(error);
+}
+
 export function isRetriableModelError(error: unknown): boolean {
-  return isRateLimitError(error) || isModelUnavailableError(error);
+  return shouldAttemptFallbackModel(error);
 }
 
 /** Mensaje claro según tipo de cuota Gemini. */

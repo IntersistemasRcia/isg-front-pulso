@@ -1,22 +1,33 @@
-const MAX_ROWS = 50;
-const MAX_BYTES = 8 * 1024;
+export type TruncateToolResultOptions = {
+  maxRows?: number;
+  maxBytes?: number;
+};
+
+const DEFAULT_MAX_ROWS = 50;
+const DEFAULT_MAX_BYTES = 8 * 1024;
 
 /**
  * Limita el tamaño del resultado de un SP antes de devolverlo al LLM.
  * Evita saturar el contexto con tablas enormes.
  */
-export function truncateToolResult(result: unknown): unknown {
+export function truncateToolResult(
+  result: unknown,
+  options?: TruncateToolResultOptions,
+): unknown {
+  const maxRows = options?.maxRows ?? DEFAULT_MAX_ROWS;
+  const maxBytes = options?.maxBytes ?? DEFAULT_MAX_BYTES;
+
   if (result == null) return result;
 
   if (Array.isArray(result)) {
     const totalRows = result.length;
-    const rows = result.slice(0, MAX_ROWS);
+    const rows = result.slice(0, maxRows);
     const payload = {
       rows,
       totalRows,
-      truncated: totalRows > MAX_ROWS,
+      truncated: totalRows > maxRows,
     };
-    return enforceByteLimit(payload);
+    return enforceByteLimit(payload, maxBytes);
   }
 
   if (typeof result === "object") {
@@ -29,27 +40,27 @@ export function truncateToolResult(result: unknown): unknown {
         const totalRows = list.length;
         return enforceByteLimit({
           ...obj,
-          [key]: list.slice(0, MAX_ROWS),
+          [key]: list.slice(0, maxRows),
           totalRows,
-          truncated: totalRows > MAX_ROWS || Boolean(obj.truncated),
-        });
+          truncated: totalRows > maxRows || Boolean(obj.truncated),
+        }, maxBytes);
       }
     }
 
-    return enforceByteLimit(obj);
+    return enforceByteLimit(obj, maxBytes);
   }
 
-  return enforceByteLimit({ value: result });
+  return enforceByteLimit({ value: result }, maxBytes);
 }
 
-function enforceByteLimit(payload: unknown): unknown {
+function enforceByteLimit(payload: unknown, maxBytes: number): unknown {
   const json = JSON.stringify(payload);
-  if (json.length <= MAX_BYTES) return payload;
+  if (json.length <= maxBytes) return payload;
 
   return {
     truncated: true,
-    message: `Resultado truncado a ${MAX_BYTES} bytes para eficiencia del contexto.`,
-    preview: json.slice(0, MAX_BYTES),
+    message: `Resultado truncado a ${maxBytes} bytes para eficiencia del contexto.`,
+    preview: json.slice(0, maxBytes),
     originalBytes: json.length,
   };
 }

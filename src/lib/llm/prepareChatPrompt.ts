@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { isToolUIPart } from "ai";
 import type { ModelDefinition } from "@/lib/llm/types";
 import {
   applyHeadroom,
@@ -6,6 +7,10 @@ import {
   estimateJsonTokens,
   estimateTokens,
 } from "@/lib/llm/tokenBudget";
+import {
+  buildFollowUpContextHint,
+  buildUserQueryContext,
+} from "@/lib/chat/buildUserQueryContext";
 import { buildPulsoSystemPrompt } from "@/lib/pulso/systemPrompt";
 import { buildPulsoTools } from "@/lib/pulso/tools";
 import type { PromptCatalogMode } from "@/lib/pulso/catalog";
@@ -19,6 +24,8 @@ export type PreparedChatPrompt = {
   catalogInPrompt: boolean;
   estimatedTokens: number;
   tokenBudget?: number;
+  messageCount: number;
+  toolResultsKb: number;
 };
 
 type PrepareOptions = {
@@ -31,27 +38,57 @@ type PrepareOptions = {
   clienteId?: string;
 };
 
-function extractLastUserText(messages: UIMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const msg = messages[i];
-    if (msg.role !== "user") continue;
-    return msg.parts
-      .filter((p): p is { type: "text"; text: string } => p.type === "text")
-      .map((p) => p.text)
-      .join(" ")
-      .trim();
+function estimatePartTokens(part: UIMessage["parts"][number]): number {
+  if (part.type === "text") {
+    return estimateTokens(part.text);
   }
-  return "";
+
+  if (isToolUIPart(part)) {
+    if (part.state === "output-available" && part.output != null) {
+      return estimateJsonTokens(part.output);
+    }
+    if (part.input != null) {
+      return estimateJsonTokens(part.input);
+    }
+  }
+
+  return estimateJsonTokens(part);
 }
 
 function estimateMessagesTokens(messages: UIMessage[]): number {
   let total = 0;
   for (const msg of messages) {
     for (const part of msg.parts) {
-      if (part.type === "text") total += estimateTokens(part.text);
+      total += estimatePartTokens(part);
     }
   }
   return total;
+}
+
+function estimateToolResultsKb(messages: UIMessage[]): number {
+  let bytes = 0;
+  for (const msg of messages) {
+    for (const part of msg.parts) {
+      if (isToolUIPart(part) && part.state === "output-available" && part.output != null) {
+        try {
+          bytes += JSON.stringify(part.output).length;
+        } catch {
+          bytes += 0;
+        }
+      }
+    }
+  }
+  return Math.round(bytes / 1024);
+}
+
+function buildTruncateOptions(definition?: ModelDefinition) {
+  if (!definition?.toolResultMaxBytes && !definition?.toolResultMaxRows) {
+    return undefined;
+  }
+  return {
+    maxBytes: definition.toolResultMaxBytes,
+    maxRows: definition.toolResultMaxRows,
+  };
 }
 
 const MODE_ESCALATION: PromptCatalogMode[] = ["full", "compact", "minimal", "tool-only"];
@@ -63,7 +100,7 @@ function modesFromPreferred(start: PromptCatalogMode): PromptCatalogMode[] {
 
 /**
  * Arma system + tools respetando headroom del modelo.
- * - Filtra SPs relevantes (ranking léxico).
+ * - Filtra SPs relevantes (ranking léxico con contexto multi-turn).
  * - Escala modo de catálogo hasta entrar en presupuesto.
  * - En tool-only el catálogo vive en el servidor (dependencia de confianza).
  */
@@ -78,10 +115,13 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
     clienteId,
   } = options;
 
-  const userText = extractLastUserText(messages);
-  const relevantCatalog = selectRelevantSps(userText, catalog);
+  const userQueryContext = buildUserQueryContext(messages);
+  const followUpContext = buildFollowUpContextHint(messages);
+  const relevantCatalog = selectRelevantSps(userQueryContext, catalog);
   const messagesTokens = estimateMessagesTokens(messages);
   const historyTokens = estimateTokens(historySummary ?? "");
+  const toolResultsKb = estimateToolResultsKb(messages);
+  const truncateOptions = buildTruncateOptions(definition);
 
   const maxInput = definition?.maxInputTokens;
   const budget =
@@ -94,7 +134,7 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
   let chosenMode: PromptCatalogMode = definition?.promptMode ?? "full";
   let catalogInPrompt = true;
   let system = "";
-  let tools = buildPulsoTools(token, catalog);
+  let tools = buildPulsoTools(token, catalog, { truncateOptions });
   let estimatedTokens = 0;
 
   if (budget != null) {
@@ -107,9 +147,13 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
           clienteId,
           catalog: mode === "tool-only" ? [] : relevantCatalog,
           historySummary,
+          followUpContext,
           promptMode: mode,
         });
-        tools = buildPulsoTools(token, catalog, { includeCatalogTool: true });
+        tools = buildPulsoTools(token, catalog, {
+          includeCatalogTool: true,
+          truncateOptions,
+        });
       } else {
         catalogInPrompt = true;
         system = buildPulsoSystemPrompt({
@@ -117,9 +161,13 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
           clienteId,
           catalog: relevantCatalog,
           historySummary,
+          followUpContext,
           promptMode: mode,
         });
-        tools = buildPulsoTools(token, catalog, { includeCatalogTool: false });
+        tools = buildPulsoTools(token, catalog, {
+          includeCatalogTool: false,
+          truncateOptions,
+        });
       }
 
       estimatedTokens =
@@ -140,10 +188,12 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
       clienteId,
       catalog: catalogInPrompt ? relevantCatalog : [],
       historySummary,
+      followUpContext,
       promptMode: chosenMode,
     });
     tools = buildPulsoTools(token, catalog, {
       includeCatalogTool: chosenMode === "tool-only",
+      truncateOptions,
     });
     estimatedTokens =
       estimateTokens(system) + fixedOverhead + estimateJsonTokens(tools);
@@ -156,5 +206,7 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
     catalogInPrompt,
     estimatedTokens,
     tokenBudget: budget,
+    messageCount: messages.length,
+    toolResultsKb,
   };
 }

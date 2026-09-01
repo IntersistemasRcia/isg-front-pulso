@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import type { UIMessage } from "ai";
 import { DEFAULT_MODEL_ID, normalizeModelId } from "@/lib/llm";
 import { runChatWithModelFallback } from "@/lib/llm/runChatWithFallback";
+import { normalizeChatMessages } from "@/lib/chat/normalizeChatMessages";
 import { windowMessages } from "@/lib/chat/windowMessages";
 import type { SpArquitectura } from "@/lib/pulso/types";
 import {
@@ -40,10 +41,12 @@ export async function POST(request: NextRequest) {
     modelId?: string;
   };
   const allMessages = body.messages ?? [];
+  const rawMessageCount = allMessages.length;
+  const normalizedMessages = normalizeChatMessages(allMessages);
   const requestedModelId = normalizeModelId(
     body.modelId?.trim() || DEFAULT_MODEL_ID,
   );
-  const { messages, historySummary } = windowMessages(allMessages);
+  const { messages, historySummary } = windowMessages(normalizedMessages);
 
   let catalog: SpArquitectura[] = [];
   try {
@@ -61,5 +64,6 @@ export async function POST(request: NextRequest) {
     companyName: user.companyName,
     clienteId: user.clienteId,
     catalog,
+    rawMessageCount,
   });
 }
