@@ -159,9 +159,9 @@ export function isGoogleAuthError(error: unknown): boolean {
 
 export function buildGoogleAuthErrorMessage(): string {
   return (
-    "La clave GOOGLE_FREE_API_KEY del servidor no es válida. " +
-    "Debe ser una API key de Google AI Studio (formato AIzaSy…). " +
-    "Regenerala en https://aistudio.google.com/apikey y reiniciá el servidor."
+    "No se pudo autenticar con Google Gemini. Verificá GOOGLE_FREE_API_KEY " +
+    "(formato AIza… o AQ.…) en el servidor y reiniciá el servicio. " +
+    "Si usás clave AQ., asegurate de que el proyecto tenga la API de Gemini habilitada."
   );
 }
 

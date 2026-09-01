@@ -3,7 +3,8 @@ export type LlmProviderId =
   | "anthropic"
   | "google"
   | "google-free"
-  | "groq";
+  | "groq"
+  | "openai-compatible";
 
 export type ModelTier = "free" | "premium";
 
@@ -34,6 +35,10 @@ export interface ModelDefinition {
   toolResultMaxBytes?: number;
   /** Límite de filas para resultados de tools ERP en este modelo. */
   toolResultMaxRows?: number;
+  /** Mensajes máximos de historial enviados al modelo. */
+  messageWindowSize?: number;
+  /** SPs relevantes en el prompt (ranking léxico). */
+  relevantSpTopK?: number;
 }
 
 export interface ProviderAvailability {
