@@ -228,7 +228,13 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
   }
 
   if (isRetriableModelError(lastError)) {
-    return errorResponse(buildQuotaExceededMessage(lastError), 429, errorHeaders);
+    // isHosted: true cuando el modelo fallido pertenece al tier "premium" provider google
+    // (Pulso IA Premium). Los modelos free-google usan provider "google-free".
+    const failedDef = failedModelId ? getModelDefinition(failedModelId) : undefined;
+    const isHosted =
+      failedDef?.tier === "premium" &&
+      (failedDef?.provider === "google" || failedDef?.byokProvider === "google");
+    return errorResponse(buildQuotaExceededMessage(lastError, isHosted), 429, errorHeaders);
   }
 
   return errorResponse(resolveErrorMessage(lastError), 500, errorHeaders);
