@@ -1,7 +1,8 @@
+"use client";
+
 import type { UIMessage } from "ai";
 import { isToolUIPart } from "ai";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { AssistantRichBody } from "@/components/chat/MessageBubble/AssistantRichBody";
 import { translateErrorMessage } from "@/utils/userFacingErrors";
 import styles from "./MessageBubble.module.css";
 
@@ -107,11 +108,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
               </div>
             ) : null}
             {displayText ? (
-              <div className="markdown-body">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {displayText}
-                </ReactMarkdown>
-              </div>
+              <AssistantRichBody text={displayText} />
             ) : isStreaming ? (
               <span className={styles.pending}>Procesando…</span>
             ) : null}
