@@ -118,6 +118,31 @@ export const MODEL_CATALOG: readonly ModelDefinition[] = [
     byokProvider: "google",
     envKeys: ["GOOGLE_API_KEY"],
   },
+  {
+    /**
+     * Modelo hosted inicial del pack "Pulso IA Premium".
+     * Requiere GOOGLE_API_KEY de la cuenta GCP empresa (1 proyecto por cliente).
+     * Parámetros balanceados para agente ERP con context caching implícito.
+     */
+    id: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash",
+    description:
+      "Gemini 2.5 Flash (pack Pulso IA Premium). Requiere clave de empresa o BYOK.",
+    tier: "premium",
+    provider: "google",
+    providerModelId: "gemini-2.5-flash",
+    byokProvider: "google",
+    envKeys: ["GOOGLE_API_KEY"],
+    // Perfil hosted: prompts completos (context caching aprovecha prefijos estables),
+    // ventana amplia, tool results generosos vs modelos gratuitos.
+    promptMode: "compact",
+    maxInputTokens: 48_000,
+    inputHeadroomRatio: 0.75,
+    toolResultMaxBytes: 8192,
+    toolResultMaxRows: 40,
+    messageWindowSize: 10,
+    relevantSpTopK: 8,
+  },
 ];
 
 /** Catálogo estático + modelo local dinámico (si está configurado en env). */

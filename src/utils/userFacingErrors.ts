@@ -170,15 +170,28 @@ import {
   unwrapLlmError,
 } from "@/lib/llm/llmErrors";
 
-/** Mensaje de cuota LLM según tipo (diaria vs por minuto). */
-export function translateLlmQuotaError(error?: unknown): UserFacingError {
+/**
+ * Mensaje de cuota LLM según tipo (diaria / por minuto / spend cap).
+ * @param error    - error original del AI SDK.
+ * @param isHosted - true si el modelo es del tier hosted/empresa (Pulso IA Premium).
+ */
+export function translateLlmQuotaError(error?: unknown, isHosted = false): UserFacingError {
   const kind = error ? getGeminiQuotaKind(error) : "unknown";
+
+  // Spend Cap (billing deshabilitado por tope USD en GCP)
+  if (kind === "spend_cap") {
+    return {
+      code: "LLM_QUOTA",
+      title: isHosted ? "Límite mensual del plan alcanzado" : "Límite de facturación",
+      message: buildQuotaExceededMessage(error, isHosted),
+    };
+  }
 
   if (kind === "daily") {
     return {
       code: "LLM_QUOTA",
-      title: "Cuota diaria agotada",
-      message: buildQuotaExceededMessage(error),
+      title: isHosted ? "Cupo diario alcanzado" : "Cuota diaria agotada",
+      message: buildQuotaExceededMessage(error, isHosted),
     };
   }
 
@@ -186,15 +199,14 @@ export function translateLlmQuotaError(error?: unknown): UserFacingError {
     return {
       code: "LLM_QUOTA",
       title: "Demasiadas consultas",
-      message:
-        "Límite de consultas por minuto alcanzado en el modelo gratuito. Esperá 1 minuto e intentá de nuevo, o elegí otro modelo.",
+      message: buildQuotaExceededMessage(error, isHosted),
     };
   }
 
   return {
     code: "LLM_QUOTA",
     title: "Límite de uso",
-    message: buildQuotaExceededMessage(error).replace(/\*\*/g, ""),
+    message: buildQuotaExceededMessage(error, isHosted).replace(/\*\*/g, ""),
   };
 }
 

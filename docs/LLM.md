@@ -21,6 +21,9 @@ Este documento describe cómo Pulso elige proveedores, modelos y claves API.
 | `gpt-4o` | GPT-4o | premium | OpenAI | BYOK / `OPENAI_API_KEY` |
 | `claude-sonnet-4-20250514` | Claude Sonnet 4 | premium | Anthropic | BYOK / `ANTHROPIC_API_KEY` |
 | `gemini-2.5-pro` | Gemini 2.5 Pro | premium | Google | BYOK / `GOOGLE_API_KEY` |
+| `gemini-2.5-flash` | Gemini 2.5 Flash ⭐ | premium | Google (hosted) | `GOOGLE_API_KEY` empresa |
+
+> **⭐ Pulso IA Premium** – `gemini-2.5-flash` es el modelo del pack empresarial (1 proyecto GCP por cliente). Ver sección [Tier Hosted (Pulso IA Premium)](#tier-hosted-pulso-ia-premium).
 
 Definición estática: `src/lib/llm/registry.ts`. Modelo local dinámico: `src/lib/llm/localLlmConfig.ts`.
 
@@ -152,6 +155,56 @@ BYOK_ENCRYPTION_KEY=   # Cifrado BYOK
 - Componente: `src/components/chat/ModelSelector`
 - Persistencia: `localStorage` clave `pulso.chat.modelId` (`MODEL_STORAGE_KEY`)
 - El transport de `useChat` envía `modelId` en el body de `/api/chat`.
+
+## Tier Hosted (Pulso IA Premium)
+
+El pack "Pulso IA Premium" usa `gemini-2.5-flash` con una **API Key de tu cuenta GCP empresa**, una por cliente (1 proyecto GCP por cliente, misma Billing Account).
+
+### Arquitectura GCP recomendada
+
+```
+Tu cuenta empresa (1 Billing Account)
+├── Proyecto: "pulso-cliente-empresa-a"  → API Key A + Spend Cap $X/mes
+├── Proyecto: "pulso-cliente-empresa-b"  → API Key B + Spend Cap $Y/mes
+└── Proyecto: "pulso-cliente-empresa-c"  → API Key C + Spend Cap $Z/mes
+```
+
+- **Spend Cap (USD)**: se configura en GCP → Billing → Budgets & Alerts → "Acción de facturación: deshabilitar la API". Corta automáticamente si el cliente supera el tope.
+- **Cuota por minuto (TPM)**: configurar en GCP → APIs & Services → Quotas (recomendado: 50.000 TPM inicial).
+- **Restricción de clave**: en GCP → Credentials → restricción de HTTP referrer al dominio del cliente.
+
+### Variables de entorno (`.env.production` del cliente)
+
+| Variable | Descripción | Ejemplo |
+|---|---|---|
+| `GOOGLE_API_KEY` | Clave del proyecto GCP del cliente | `AIzaSy…` |
+| `HOSTED_LLM_ENABLED` | Activa el tier hosted | `1` |
+| `HOSTED_GCP_PROJECT_ID` | ID del proyecto GCP (para logs/UX) | `pulso-cliente-empresa-a` |
+| `HOSTED_DAILY_CHATS` | Cupo diario de chats (soft limit Pulso) | `200` |
+| `HOSTED_MONTHLY_TOKENS` | Tokens estimados/mes (soft limit Pulso) | `5000000` |
+| `HOSTED_NEAR_DAILY_RATIO` | Fracción para aviso "cerca del límite" | `0.8` |
+| `HOSTED_NEAR_MONTHLY_RATIO` | Fracción para aviso "cerca del límite mensual" | `0.8` |
+| `HOSTED_MAX_TOKENS_PER_MIN` | Soft limit de TPM en Pulso | `50000` |
+
+> Los soft limits de Pulso emiten avisos amigables **antes** de que GCP corte con error duro.
+
+### Parseo de errores Gemini (backend)
+
+Pulso parsea el body del error de Gemini para diferenciar:
+
+| Código GCP | Tipo detectado | Mensaje al usuario |
+|---|---|---|
+| `BILLING_DISABLED` / `billing.*exceeded` | `spend_cap` | "Límite mensual del plan alcanzado" |
+| `RESOURCE_EXHAUSTED` + `PerDay` | `daily` | "Cupo diario alcanzado" |
+| `RATE_LIMIT_EXCEEDED` + `PerMinute` | `minute` | "Demasiadas consultas, esperá 1 min" |
+
+Implementado en `src/lib/llm/llmErrors.ts` → `getGeminiQuotaKind()` y `buildQuotaExceededMessage(error, isHosted)`.
+
+### Seguridad de la API Key en on-prem
+
+- La `GOOGLE_API_KEY` vive en `.env.production` (o `.env.local` gitignored).
+- Para mayor hardening: usar Windows Credential Manager + script de lectura en `next.config.ts`.
+- Cada cliente tiene su propia clave → compromiso de una clave no afecta a otros.
 
 ## Seguridad
 
