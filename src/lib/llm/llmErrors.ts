@@ -34,15 +34,53 @@ export function getLlmErrorMessage(error: unknown): string {
   return String(unwrapped ?? "");
 }
 
-/** Detecta si el 429 es cuota diaria vs por minuto (Gemini free tier). */
-export function getGeminiQuotaKind(error: unknown): "daily" | "minute" | "unknown" {
+/**
+ * Tipo de cuota Gemini según body del error.
+ * - "daily"      → cuota diaria de requests o tokens agotada
+ * - "minute"     → cuota por minuto (RPM o TPM); reintentable en ~60s
+ * - "spend_cap"  → tope mensual en USD (Billing Spend Cap configurado en GCP)
+ * - "unknown"    → 429/403 sin body diferenciable
+ */
+export type GeminiQuotaKind = "daily" | "minute" | "spend_cap" | "unknown";
+
+/**
+ * Parsea el body del error de Gemini para distinguir el tipo de cuota.
+ * Fuentes chequeadas: message del SDK, data.error.message, responseBody raw.
+ * Solo se llama desde el backend; nunca se expone data sensible al cliente.
+ */
+export function getGeminiQuotaKind(error: unknown): GeminiQuotaKind {
   const text = getLlmErrorMessage(error);
-  if (/PerDay|GenerateRequestsPerDay|per day|daily/i.test(text)) {
+
+  // Spend Cap (Billing): GCP devuelve 403 con estos indicadores
+  if (
+    /BILLING_DISABLED|billingDisabled|billing.*disabled/i.test(text) ||
+    /budget.*exceeded|spend.*cap|monthly.*limit.*exceeded|billing.*quota/i.test(text) ||
+    /BILLING_NOT_ACTIVE|billing is not active/i.test(text)
+  ) {
+    return "spend_cap";
+  }
+
+  // Cuota diaria (tokens o requests por día)
+  if (/PerDay|GenerateRequestsPerDay|per day|daily|RESOURCE_EXHAUSTED.*day/i.test(text)) {
     return "daily";
   }
-  if (/PerMinute|GenerateRequestsPerMinute|per minute/i.test(text)) {
+
+  // Cuota por minuto (RPM / TPM — reintentable)
+  if (/PerMinute|GenerateRequestsPerMinute|per minute|RATE_LIMIT_EXCEEDED|rateLimitExceeded/i.test(text)) {
     return "minute";
   }
+
+  // Fallback: si es 429/RESOURCE_EXHAUSTED sin detalle → tratar como diaria
+  const unwrapped = unwrapLlmError(error);
+  if (unwrapped && typeof unwrapped === "object") {
+    const err = unwrapped as { status?: number; statusCode?: number; message?: string };
+    const status = err.status ?? err.statusCode;
+    const msg = (err.message ?? "").toLowerCase();
+    if (status === 429 && /resource_exhausted|quota/i.test(msg)) {
+      return "daily";
+    }
+  }
+
   return "unknown";
 }
 
@@ -179,10 +217,40 @@ export function isRetriableModelError(error: unknown): boolean {
   return shouldAttemptFallbackModel(error);
 }
 
-/** Mensaje claro según tipo de cuota Gemini. */
-export function buildQuotaExceededMessage(lastError?: unknown): string {
+/**
+ * Mensaje claro según tipo de cuota Gemini.
+ * @param lastError - error original para parsear el tipo de cuota.
+ * @param isHosted  - true si el modelo es del tier hosted/empresa (Pulso IA Premium).
+ */
+export function buildQuotaExceededMessage(lastError?: unknown, isHosted = false): string {
   const kind = lastError ? getGeminiQuotaKind(lastError) : "unknown";
 
+  // --- Tier hosted (Pulso IA Premium) ---
+  if (isHosted) {
+    if (kind === "spend_cap") {
+      return (
+        "Se alcanzó el límite de facturación mensual del plan Pulso IA Premium. " +
+        "Comunicate con el administrador para revisar los cupos del mes."
+      );
+    }
+    if (kind === "daily") {
+      return (
+        "Se agotó el cupo diario de consultas del plan Pulso IA Premium. " +
+        "El servicio se reactivará automáticamente mañana. Si necesitás más capacidad, comunicate con el administrador."
+      );
+    }
+    if (kind === "minute") {
+      return (
+        "Demasiadas consultas en poco tiempo. Esperá 1 minuto y volvé a intentar."
+      );
+    }
+    return (
+      "El modelo IA del plan Premium está temporalmente no disponible. " +
+      "Intentá de nuevo en unos minutos o comunicate con el administrador."
+    );
+  }
+
+  // --- Tier free ---
   if (kind === "daily") {
     return (
       "Agotaste la cuota gratuita diaria de Gemini (aprox. 20 consultas por día en tier free). " +
@@ -195,6 +263,13 @@ export function buildQuotaExceededMessage(lastError?: unknown): string {
     return (
       "Límite de consultas por minuto alcanzado en el modelo gratuito. " +
       "Esperá 1 minuto e intentá de nuevo, o elegí otro modelo en el selector."
+    );
+  }
+
+  if (kind === "spend_cap") {
+    return (
+      "El acceso al modelo está temporalmente bloqueado por límite de facturación. " +
+      "Comunicate con el administrador del sistema."
     );
   }
 

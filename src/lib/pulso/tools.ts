@@ -59,9 +59,9 @@ export function buildEjecutarConsultaPulsoTool(
 ) {
   return tool({
     description: [
-      "Consulta datos del ERP (ventas, clientes, stock, finanzas) vía sp_ISG_Vision_*.",
-      "Usá solo parámetros de entrada del catálogo SPs_arquitectura (firma del SP).",
-      "No inventes parámetros. No hables al usuario de nombres técnicos.",
+      "Consulta datos del ERP (ventas, clientes, stock, finanzas).",
+      "Elegí el sp_ISG_Vision_* del catálogo interno; nunca preguntes al usuario qué consulta usar.",
+      "Usá solo parámetros de entrada del catálogo. Si el usuario dio fechas o período, calculá DesdeFecha/HastaFecha y ejecutá.",
     ].join(" "),
     inputSchema: ejecutarConsultaPulsoSchema,
     execute: async ({ nombreSp, parametros }) => {

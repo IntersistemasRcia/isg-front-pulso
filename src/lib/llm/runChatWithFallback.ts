@@ -4,6 +4,7 @@ import {
   createUIMessageStreamResponse,
   generateText,
   stepCountIs,
+  streamText,
   type UIMessage,
 } from "ai";
 import { compactUiMessagesForModel } from "@/lib/chat/compactUiMessages";
@@ -27,6 +28,7 @@ import {
 } from "@/lib/llm/llmErrors";
 import { formatChatStreamError } from "@/lib/llm/streamErrorMessage";
 import { getModelDefinition } from "@/lib/llm/registry";
+import type { ModelDefinition } from "@/lib/llm/types";
 import { prepareChatPrompt } from "@/lib/llm/prepareChatPrompt";
 import type { SpArquitectura } from "@/lib/pulso/types";
 
@@ -69,9 +71,33 @@ function resolveErrorMessage(lastError: unknown): string {
   return new LlmQuotaExceededError(undefined, lastError).message;
 }
 
+function getMaxAgentSteps(definition?: ModelDefinition): number {
+  if (definition?.maxAgentSteps != null && definition.maxAgentSteps > 0) {
+    return definition.maxAgentSteps;
+  }
+  if (definition?.provider === "openai-compatible") return 2;
+  return 5;
+}
+
+function buildAgentStepOptions(definition?: ModelDefinition) {
+  if (!definition?.requireToolOnFirstStep) {
+    return {};
+  }
+
+  return {
+    prepareStep: ({ stepNumber }: { stepNumber: number }) => {
+      if (stepNumber === 0) {
+        return { toolChoice: "required" as const };
+      }
+      return {};
+    },
+  };
+}
+
 /**
- * Ejecuta el agente probando modelos en cadena (generateText + tools).
- * generateText permite fallback ante 429 antes de enviar respuesta al cliente.
+ * Ejecuta el agente probando modelos en cadena.
+ * Cloud: generateText (permite fallback ante 429 antes de responder).
+ * LLM local: streamText (streaming real — evita timeouts de proxy IIS/ARR).
  */
 export async function runChatWithModelFallback(options: RunChatOptions): Promise<Response> {
   const {
@@ -117,17 +143,33 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
           `prompt=${prepared.promptMode} tokens_est=${prepared.estimatedTokens}` +
           (prepared.tokenBudget ? ` budget=${prepared.tokenBudget}` : "") +
           ` messages=${prepared.messageCount} raw_messages=${dedupedCount} ` +
-          `tool_results_kb=${prepared.toolResultsKb}`,
+          `tool_results_kb=${prepared.toolResultsKb} steps_max=${getMaxAgentSteps(definition)}`,
       );
 
-      const result = await generateText({
+      const agentOptions = {
         model: resolved.languageModel,
         system: prepared.system,
         messages: modelMessages,
         tools: prepared.tools,
-        stopWhen: stepCountIs(5),
+        stopWhen: stepCountIs(getMaxAgentSteps(definition)),
         maxRetries: 0,
-      });
+        ...buildAgentStepOptions(definition),
+      };
+
+      const pulsoHeaders = {
+        "X-Pulso-Model-Id": resolved.modelId,
+        "X-Pulso-Model-Source": resolved.source,
+      };
+
+      if (definition?.streaming) {
+        const result = streamText(agentOptions);
+        return result.toUIMessageStreamResponse({
+          originalMessages: compactedMessages,
+          headers: pulsoHeaders,
+        });
+      }
+
+      const result = await generateText(agentOptions);
 
       const text =
         result.text.trim() ||
@@ -144,10 +186,7 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
 
       return createUIMessageStreamResponse({
         stream,
-        headers: {
-          "X-Pulso-Model-Id": resolved.modelId,
-          "X-Pulso-Model-Source": resolved.source,
-        },
+        headers: pulsoHeaders,
       });
     } catch (error) {
       lastError = error;
@@ -189,7 +228,13 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
   }
 
   if (isRetriableModelError(lastError)) {
-    return errorResponse(buildQuotaExceededMessage(lastError), 429, errorHeaders);
+    // isHosted: true cuando el modelo fallido pertenece al tier "premium" provider google
+    // (Pulso IA Premium). Los modelos free-google usan provider "google-free".
+    const failedDef = failedModelId ? getModelDefinition(failedModelId) : undefined;
+    const isHosted =
+      failedDef?.tier === "premium" &&
+      (failedDef?.provider === "google" || failedDef?.byokProvider === "google");
+    return errorResponse(buildQuotaExceededMessage(lastError, isHosted), 429, errorHeaders);
   }
 
   return errorResponse(resolveErrorMessage(lastError), 500, errorHeaders);

@@ -64,6 +64,9 @@ export function selectRelevantSps(
     if (/kpi|indicador|dashboard|resumen/i.test(userText) && /kpi|dashboard|resumen/i.test(name)) {
       score += 3;
     }
+    if (/semana|mes|abril|enero|febrero|marzo|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre/i.test(userText) && /venta|factur|resumen/i.test(name)) {
+      score += 4;
+    }
 
     return { sp, score };
   });

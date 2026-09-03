@@ -40,13 +40,20 @@ export function isLocalLlmConfigured(): boolean {
   return getLocalLlmConnection() != null;
 }
 
+function readPositiveInt(key: string, fallback: number): number {
+  const raw = readEnv(key);
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export function getLocalLlmDefinition(): ModelDefinition | null {
   const conn = getLocalLlmConnection();
   if (!conn) return null;
 
   const label = readEnv("LOCAL_LLM_LABEL") ?? "LLM Local";
-  const maxInputRaw = readEnv("LOCAL_LLM_MAX_INPUT_TOKENS");
-  const maxInputTokens = maxInputRaw ? Number.parseInt(maxInputRaw, 10) : 32_768;
+  const maxInputTokens = readPositiveInt("LOCAL_LLM_MAX_INPUT_TOKENS", 8192);
+  const maxAgentSteps = readPositiveInt("LOCAL_LLM_MAX_AGENT_STEPS", 2);
 
   return {
     id: LOCAL_LLM_MODEL_ID,
@@ -57,12 +64,16 @@ export function getLocalLlmDefinition(): ModelDefinition | null {
     provider: "openai-compatible",
     providerModelId: conn.providerModelId,
     envKeys: ["LOCAL_LLM_ENABLED", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_MODEL"],
+    /** Catálogo compacto en prompt: modelos locales fallan en tool-only sin contexto. */
     promptMode: "compact",
-    maxInputTokens: Number.isFinite(maxInputTokens) ? maxInputTokens : 32_768,
-    inputHeadroomRatio: 0.8,
-    toolResultMaxBytes: 12_288,
-    toolResultMaxRows: 50,
-    messageWindowSize: 10,
-    relevantSpTopK: 8,
+    maxInputTokens,
+    inputHeadroomRatio: 0.65,
+    toolResultMaxBytes: 2048,
+    toolResultMaxRows: 15,
+    messageWindowSize: 4,
+    relevantSpTopK: 4,
+    maxAgentSteps,
+    streaming: true,
+    requireToolOnFirstStep: true,
   };
 }
