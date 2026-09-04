@@ -12,7 +12,7 @@
 }
 
 .bubble {
-  max-width: min(720px, 92%);
+  max-width: min(780px, 96%);
   padding: 0.85rem 1rem;
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
