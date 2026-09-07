@@ -1,13 +1,15 @@
 import type { SpArquitectura, SpParametroArquitectura } from "@/lib/pulso/types";
 import { getSpNombre, getSpParametros } from "@/lib/pulso/catalog";
 
-/** localStorage: catálogo slim sys.parameters (v2 invalida cache con SQL viejo). */
-export const SP_ARQUITECTURA_STORAGE_KEY = "pulso.sp.arquitectura.v2";
+/** localStorage: catálogo slim + descripcion Pulso (v3). */
+export const SP_ARQUITECTURA_STORAGE_KEY = "pulso.sp.arquitectura.v3";
 
 export const SP_ARQUITECTURA_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type SpArquitecturaStoredItem = {
   nombre: string;
+  /** Descripción de negocio (comentario -- Pulso: o fallback humanizado). */
+  descripcion?: string;
   parametros: SpParametroArquitectura[];
 };
 
@@ -21,6 +23,7 @@ export function toStoredArquitectura(catalog: SpArquitectura[]): SpArquitecturaS
     fetchedAt: Date.now(),
     sps: catalog.map((sp) => ({
       nombre: getSpNombre(sp),
+      descripcion: (sp.descripcion ?? sp.description)?.trim() || undefined,
       parametros: getSpParametros(sp).map((p) => ({
         nombre: p.nombre,
         tipo: p.tipo ?? p.type,
@@ -51,6 +54,16 @@ export function loadSpArquitecturaFromStorage(): SpArquitecturaStored | null {
     return parsed;
   } catch {
     return null;
+  }
+}
+
+/** Quita el catálogo del localStorage (logout / sesión inválida). */
+export function clearSpArquitecturaStorage(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(SP_ARQUITECTURA_STORAGE_KEY);
+  } catch {
+    // private mode / quota
   }
 }
 

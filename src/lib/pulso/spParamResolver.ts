@@ -67,7 +67,19 @@ export function isDateParam(param: SpParametroArquitectura): boolean {
 export type CoerceParamsResult = {
   parametros: Record<string, unknown>;
   warnings: string[];
+  /** Nombres de entrada requeridos por el catálogo que faltan o vienen vacíos. */
+  missingRequired: string[];
 };
+
+function isEmptyParamValue(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value === "string" && value.trim() === "") return true;
+  return false;
+}
+
+function isParamRequired(p: SpParametroArquitectura): boolean {
+  return (p.requerido ?? p.required) !== false;
+}
 
 /**
  * Alinea parámetros del LLM al catálogo SPs_arquitectura antes de POST /ejecutar-sp.
@@ -82,12 +94,18 @@ export function coerceParamsForSp(
   const knownByName = new Map(known.map((p) => [p.nombre.toLowerCase(), p]));
   const result: Record<string, unknown> = {};
   const warnings: string[] = [];
+  const missingRequired: string[] = [];
 
   for (const [key, value] of Object.entries(raw)) {
     if (isDeniedSpParamName(key)) {
       warnings.push(
         `Parámetro "${key}" es variable de cuerpo SQL (no es input del SP); omitido.`,
       );
+      continue;
+    }
+
+    if (isEmptyParamValue(value)) {
+      warnings.push(`Parámetro "${key}" vacío; omitido.`);
       continue;
     }
 
@@ -115,19 +133,16 @@ export function coerceParamsForSp(
       Object.keys(result).map((k) => k.toLowerCase()),
     );
     for (const p of known) {
-      // OUTPUT / variables del cuerpo ya no entran al catálogo; solo falta de inputs reales.
-      if (
-        (p.requerido ?? p.required) !== false &&
-        !resultKeysLower.has(p.nombre.toLowerCase())
-      ) {
-        warnings.push(
-          `Falta parámetro de entrada "${p.nombre}" (firma del SP en SPs_arquitectura).`,
-        );
-      }
+      if (!isParamRequired(p)) continue;
+      if (resultKeysLower.has(p.nombre.toLowerCase())) continue;
+      missingRequired.push(p.nombre);
+      warnings.push(
+        `Falta parámetro de entrada "${p.nombre}" (firma del SP en SPs_arquitectura).`,
+      );
     }
   }
 
-  return { parametros: result, warnings };
+  return { parametros: result, warnings, missingRequired };
 }
 
 export function formatSpParamHint(sp: SpArquitectura): string {
@@ -135,7 +150,8 @@ export function formatSpParamHint(sp: SpArquitectura): string {
     .map((p) => {
       const tipo = p.tipo ?? p.type;
       const dateHint = tipo && /date|time/i.test(tipo) ? " (dd/MM/yyyy)" : "";
-      return `${p.nombre}${dateHint}`;
+      const req = isParamRequired(p) ? "requerido" : "opcional";
+      return `${p.nombre}${dateHint} [${req}]`;
     })
     .join(", ");
   return params || "(sin parámetros)";

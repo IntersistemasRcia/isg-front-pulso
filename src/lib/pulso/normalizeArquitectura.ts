@@ -158,10 +158,12 @@ export function normalizeArquitecturaItem(raw: PulsoSpArquitecturaRaw): SpArquit
         ? extractParamsFromSql(codigoSql)
         : [];
 
+  const fromApiDesc = String(raw.descripcion ?? raw.description ?? "").trim();
+
   return {
     nombre,
     name: nombre,
-    descripcion: humanizeSpDescription(nombre, parametros),
+    descripcion: fromApiDesc || humanizeSpDescription(nombre, parametros),
     codigoSql: codigoSql || undefined,
     parametros,
     parameters: parametros,
