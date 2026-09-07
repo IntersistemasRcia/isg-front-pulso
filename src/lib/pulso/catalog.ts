@@ -68,9 +68,14 @@ export function formatArquitecturaForPrompt(
   }
 
   if (mode === "minimal") {
-    const lines = catalog.map((sp) => `• ${getSpNombre(sp)}`);
+    const lines = catalog.map((sp) => {
+      const name = getSpNombre(sp);
+      const desc = getSpDescripcion(sp);
+      const short = desc.length > 80 ? `${desc.slice(0, 77)}…` : desc;
+      return short ? `• ${name} — ${short}` : `• ${name}`;
+    });
     return [
-      "Consultas ERP candidatas (USO INTERNO — elegí una vos; no preguntes al usuario cuál usar):",
+      "Consultas ERP candidatas (USO INTERNO — elegí una vos usando nombre y descripción; no preguntes al usuario cuál usar):",
       ...lines,
     ].join("\n");
   }
@@ -78,11 +83,16 @@ export function formatArquitecturaForPrompt(
   if (mode === "compact") {
     const lines = catalog.map((sp) => {
       const name = getSpNombre(sp);
-      return `• ${name} — ${formatSpParamHint(sp)}`;
+      const desc = getSpDescripcion(sp);
+      const short = desc.length > 120 ? `${desc.slice(0, 117)}…` : desc;
+      const params = formatSpParamHint(sp);
+      return short
+        ? `• ${name} — ${short} — ${params}`
+        : `• ${name} — ${params}`;
     });
 
     return [
-      "Consultas ERP candidatas (USO INTERNO — elegí la adecuada y ejecutá; no menciones estos nombres al usuario):",
+      "Consultas ERP candidatas (USO INTERNO — elegí la adecuada por descripción e intención; ejecutá; no menciones estos nombres al usuario):",
       ...lines,
     ].join("\n");
   }

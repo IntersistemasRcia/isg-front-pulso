@@ -62,18 +62,39 @@ export function buildEjecutarConsultaPulsoTool(
       "Consulta datos del ERP (ventas, clientes, stock, finanzas).",
       "Elegí el sp_ISG_Vision_* del catálogo interno; nunca preguntes al usuario qué consulta usar.",
       "Usá solo parámetros de entrada del catálogo. Si el usuario dio fechas o período, calculá DesdeFecha/HastaFecha y ejecutá.",
+      "Si faltan inputs requeridos del catálogo que el usuario no dio, no inventes valores: el runtime devolverá MISSING_REQUIRED_PARAMS y debés pedir el dato de negocio.",
     ].join(" "),
     inputSchema: ejecutarConsultaPulsoSchema,
     execute: async ({ nombreSp, parametros }) => {
       const raw = normalizeToolParametros(parametros);
-      const { parametros: parametrosRecord, warnings } = coerceParamsForSp(
-        nombreSp,
-        raw,
-        catalog,
-      );
+      const {
+        parametros: parametrosRecord,
+        warnings,
+        missingRequired,
+      } = coerceParamsForSp(nombreSp, raw, catalog);
 
       if (warnings.length > 0) {
         console.warn(`[pulso] ${nombreSp} params:`, warnings.join(" | "));
+      }
+
+      const catalogSp = catalog.find(
+        (sp) => getSpNombre(sp).toLowerCase() === nombreSp.toLowerCase(),
+      );
+
+      if (missingRequired.length > 0) {
+        return {
+          ok: false,
+          code: "MISSING_REQUIRED_PARAMS",
+          missingRequired,
+          parametrosEsperados: catalogSp
+            ? formatSpParamHint(catalogSp)
+            : "(consultá listarCatalogoPulso)",
+          parametrosEnviados: raw,
+          avisoUsuario:
+            "NO digas que no hay información ni que no hubo movimientos. " +
+            "Traducí missingRequired a lenguaje de negocio y pedí esos datos al usuario. " +
+            "No menciones SP, SQL ni nombres técnicos crudos de parámetros.",
+        };
       }
 
       if (
@@ -81,15 +102,12 @@ export function buildEjecutarConsultaPulsoTool(
         Object.keys(parametrosRecord).length === 0 &&
         Object.keys(raw).length > 0
       ) {
-        const expected = catalog.find(
-          (sp) => sp.nombre.toLowerCase() === nombreSp.toLowerCase(),
-        );
         return {
           ok: false,
           message:
             "Parámetros inválidos para esa consulta. Reintentá solo con los de entrada del catálogo.",
-          parametrosEsperados: expected
-            ? formatSpParamHint(expected)
+          parametrosEsperados: catalogSp
+            ? formatSpParamHint(catalogSp)
             : "(consultá listarCatalogoPulso)",
           parametrosEnviados: raw,
           avisoUsuario:
