@@ -57,14 +57,19 @@ export function selectRelevantSps(
 
     const name = getSpNombre(sp).toLowerCase();
     if (/venta|factur|ingreso/i.test(userText) && /venta|factur/i.test(name)) score += 3;
+    if (/margen|utilidad|ganancia/i.test(userText) && /margen|utilidad|ganancia/i.test(name)) {
+      score += 5;
+    }
     if (/stock|invent|articulo|artículo/i.test(userText) && /stock|invent|articulo/i.test(name)) {
       score += 3;
     }
     if (/cliente|cuit/i.test(userText) && /cliente/i.test(name)) score += 3;
+    if (/marca/i.test(userText) && /marca/i.test(name)) score += 4;
+    if (/rubro/i.test(userText) && /rubro/i.test(name)) score += 4;
     if (/kpi|indicador|dashboard|resumen/i.test(userText) && /kpi|dashboard|resumen/i.test(name)) {
       score += 3;
     }
-    if (/semana|mes|abril|enero|febrero|marzo|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre/i.test(userText) && /venta|factur|resumen/i.test(name)) {
+    if (/semana|mes|abril|enero|febrero|marzo|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre/i.test(userText) && /venta|factur|resumen|margen/i.test(name)) {
       score += 4;
     }
 

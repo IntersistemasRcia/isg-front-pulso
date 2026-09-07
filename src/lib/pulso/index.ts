@@ -18,6 +18,7 @@ export { coerceParamsForSp, buildSpCatalogIndex } from "@/lib/pulso/spParamResol
 export {
   syncSpArquitecturaFromApi,
   loadSpArquitecturaFromStorage,
+  clearSpArquitecturaStorage,
   SP_ARQUITECTURA_STORAGE_KEY,
 } from "@/lib/pulso/arquitecturaStorage";
 export {

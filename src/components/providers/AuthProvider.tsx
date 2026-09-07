@@ -11,6 +11,10 @@ import {
   storeUserJson,
 } from "@/utils/api";
 import { isTokenExpired, mapPayloadToUser } from "@/utils/auth";
+import {
+  clearSpArquitecturaStorage,
+  syncSpArquitecturaFromApi,
+} from "@/lib/pulso/arquitecturaStorage";
 import { decodeJwt } from "jose";
 
 interface AuthContextValue {
@@ -78,10 +82,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     storeUserJson(JSON.stringify(nextUser));
     setToken(data.token);
     setUser(nextUser);
+
+    // Catálogo SP fresco en LS; no bloquear login si Pulso API falla.
+    try {
+      await syncSpArquitecturaFromApi(data.token);
+    } catch {
+      // el chat reintenta al montar ChatPanel
+    }
   }, []);
 
   const logout = useCallback(() => {
     clearAuthStorage();
+    clearSpArquitecturaStorage();
     setToken(null);
     setUser(null);
   }, []);
