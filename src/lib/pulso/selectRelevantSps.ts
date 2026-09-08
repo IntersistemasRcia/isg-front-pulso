@@ -11,6 +11,9 @@ const CORE_SP_KEYWORDS = [
   "kpi",
   "cliente",
   "stock",
+  "marca",
+  "rubro",
+  "get",
 ] as const;
 
 function tokenize(text: string): string[] {
@@ -30,6 +33,13 @@ function spHaystack(sp: SpArquitectura): string[] {
   return tokenize(`${name} ${params} ${sp.descripcion ?? ""}`);
 }
 
+function isMasterListSp(name: string): boolean {
+  return (
+    /getmarcas|getrubros|get_?marca|get_?rubro/i.test(name) ||
+    (/^sp_isg_vision_get/i.test(name) && /marca|rubro|cliente|sucursal|vendedor/i.test(name))
+  );
+}
+
 /**
  * Filtra el catálogo a los SP más relevantes para la consulta del usuario.
  * Ranking léxico barato (sin embeddings) — reutiliza el patrón de selectActiveTools.
@@ -45,6 +55,11 @@ export function selectRelevantSps(
   if (queryTokens.length === 0) {
     return pickCoreFallback(catalog, topK);
   }
+
+  const asksCatalogList =
+    /catalogo|catálogo|listado|lista de|listar/i.test(userText);
+  const asksMarcas = /marca/i.test(userText);
+  const asksRubros = /rubro/i.test(userText);
 
   const scored = catalog.map((sp) => {
     const haystack = spHaystack(sp);
@@ -64,8 +79,14 @@ export function selectRelevantSps(
       score += 3;
     }
     if (/cliente|cuit/i.test(userText) && /cliente/i.test(name)) score += 3;
-    if (/marca/i.test(userText) && /marca/i.test(name)) score += 4;
-    if (/rubro/i.test(userText) && /rubro/i.test(name)) score += 4;
+    if (asksMarcas && /marca/i.test(name)) score += 6;
+    if (asksRubros && /rubro/i.test(name) && !/margen/i.test(name)) score += 5;
+    if (asksRubros && /rubro/i.test(name) && /margen/i.test(name)) score += 2;
+    if (asksCatalogList && isMasterListSp(name)) score += 8;
+    if (asksCatalogList && asksMarcas && /marca/i.test(name)) score += 10;
+    if (asksCatalogList && asksRubros && /rubro/i.test(name) && !/margen/i.test(name)) {
+      score += 10;
+    }
     if (/kpi|indicador|dashboard|resumen/i.test(userText) && /kpi|dashboard|resumen/i.test(name)) {
       score += 3;
     }

@@ -59,9 +59,11 @@ export function buildEjecutarConsultaPulsoTool(
 ) {
   return tool({
     description: [
-      "Consulta datos del ERP (ventas, clientes, stock, finanzas).",
+      "Consulta datos del ERP (ventas, clientes, stock, finanzas, catálogos maestros).",
       "Elegí el sp_ISG_Vision_* del catálogo interno; nunca preguntes al usuario qué consulta usar.",
-      "Usá solo parámetros de entrada del catálogo. Si el usuario dio fechas o período, calculá DesdeFecha/HastaFecha y ejecutá.",
+      "Listados maestros (ej. sp_ISG_Vision_GetMarcas): ejecutá con parametros omitidos o []. No digas que no tenés acceso.",
+      "Usá solo parámetros de entrada del catálogo. Si el usuario dio fechas o período (ej. «junio»), calculá FechaDesde/FechaHasta con el año actual si falta y ejecutá ANTES de responder.",
+      "Nunca respondas «no hay ventas» o «no encontré datos» sin haber ejecutado esta tool.",
       "Si faltan inputs requeridos del catálogo que el usuario no dio, no inventes valores: el runtime devolverá MISSING_REQUIRED_PARAMS y debés pedir el dato de negocio.",
     ].join(" "),
     inputSchema: ejecutarConsultaPulsoSchema,
