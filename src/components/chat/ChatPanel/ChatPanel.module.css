@@ -3,6 +3,8 @@
   flex-direction: column;
   height: calc(100vh - var(--header-height));
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .errorBanner {
