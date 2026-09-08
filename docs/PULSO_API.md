@@ -49,6 +49,14 @@ Fuente: [SqlEjecutorService.cs](https://github.com/IntersistemasRcia/isg-api-pul
         "nombre": "FechaDesde",
         "tipo": "date",
         "requerido": true,
+        "tieneDefault": false,
+        "esOutput": false
+      },
+      {
+        "nombre": "IDSucursal",
+        "tipo": "int",
+        "requerido": false,
+        "tieneDefault": true,
         "esOutput": false
       }
     ]
@@ -60,6 +68,15 @@ Fuente: [SqlEjecutorService.cs](https://github.com/IntersistemasRcia/isg-api-pul
   }
 ]
 ```
+
+### Contrato `requerido` / `tieneDefault`
+
+- `tieneDefault: true` cuando la firma T-SQL declara default (`@IDSucursal INT = NULL`, `@Top INT = 10`, etc.).
+- `requerido` debe ser **siempre** `!tieneDefault` (para inputs; `esOutput: true` no se envían al ejecutar).
+- **Importante:** `sys.parameters.has_default_value` es **casi siempre 0** en SPs T-SQL (limitación de SQL Server). No alcanza con mapear solo esa columna: hay que inferir defaults desde `sys.sql_modules.definition` (firma `CREATE/ALTER PROC … AS`).
+- Tras redeploy: limpiar LS `pulso.sp.arquitectura.v3` y esperar TTL del cache server (~5 min) o reiniciar Next.
+
+El front (`normalizeArquitectura.ts`) confía en `requerido` del API; si falta, deriva `!tieneDefault`.
 
 ### Convención de descripción en SQL
 
@@ -157,6 +174,50 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 | «No hay ventas de junio» y luego sí con año | Alucinación sin tool o mes sin año; el prompt fuerza año calendario actual + tool antes de negar |
 | «No se pudo acceder» sin tool en Network | El modelo inventó un fallo; el prompt + `formatClosestAlternativesHint` deben ofrecer 1–2 alternativas de negocio |
 | Connection a otra base (Biamaq vs Cheek) | Alinear connection string de isg-api-pulso a la DB donde están los SP Vision |
+| `IDSucursal` sale `requerido: true` con `= NULL` | Backend no infiere default desde definition (has_default_value T-SQL = 0). Ver prompt abajo + limpiar LS v3 |
+| Ver SPs candidatos del turno | Network → `POST /api/chat` → headers `X-Pulso-Sp-*`, o chat con `?debug=1` |
+
+## Prompt para implementar `requerido` / `tieneDefault` en isg-api-pulso
+
+Copiar en el repo [isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso) (rama `develop`):
+
+```
+Trabajá en isg-api-pulso (ASP.NET, Dapper, SQL Server).
+
+Problema: GET /api/v1/pulso/SPs_arquitectura marca como requerido parámetros
+opcionales del estilo `@IDSucursal INT = NULL`. El front (Pulso chat) trata
+todo lo que no sea requerido:false como obligatorio y pide sucursal al usuario
+aunque el SP no la necesite.
+
+Causa: sys.parameters.has_default_value NO se popula para SPs T-SQL (docs Microsoft:
+casi siempre 0). No alcanza con `requerido = !has_default_value`.
+
+Objetivo (contrato camelCase slim):
+Cada ítem de parametros[] debe incluir:
+- nombre, tipo, esOutput
+- tieneDefault: bool  (true si la firma declara = default)
+- requerido: bool     (= !tieneDefault para inputs)
+
+Cómo calcular tieneDefault (limpio, sin hacks en el front):
+1) Seguí listando params desde sys.procedures + LEFT JOIN sys.parameters + types
+   (LEFT JOIN para que SPs sin params, p.ej. GetMarcas, aparezcan con parametros: []).
+2) Traé también m.definition desde sys.sql_modules (LEFT JOIN).
+3) Parseá la firma entre CREATE/ALTER PROC … y AS (ignorá comentarios -- y /* */).
+4) Si el parámetro aparece como `@Nombre Tipo … = <valor>` (NULL, número, string N'…'),
+   tieneDefault = true. También OR con has_default_value si alguna vez es 1 (CLR).
+5) requerido = !tieneDefault. Exponé ambos campos en ParametroDto / JSON.
+6) No devolver CodigoSQL en slim (solo usalo en memoria para parseo + comentario -- Pulso:).
+
+Archivos típicos: Services/SqlEjecutorService.cs, Models/SpArquitecturaDto.cs
+(ParametroDto), Controllers/EjecutorController.cs.
+
+Aceptación:
+GET /api/v1/pulso/SPs_arquitectura
+→ sp_ISG_Vision_dash_ventas_medio_pago_resumen
+→ IDSucursal.requerido === false && IDSucursal.tieneDefault === true
+Misma lógica para IDOrigenPedido, Top, ModoOrden y cualquier @Param = default.
+Redeploy Kestrel y verificá el JSON crudo (sin pasar por el front).
+```
 
 ## Prompt para implementar `descripcion` en isg-api-pulso
 
@@ -185,8 +246,9 @@ TryExtractPulsoComment:
 - Nunca throw por parseo
 
 Respuesta slim camelCase por ítem:
-{ nombreSp, descripcion, parametros: [{ nombre, tipo, requerido, esOutput }] }
+{ nombreSp, descripcion, parametros: [{ nombre, tipo, requerido, tieneDefault, esOutput }] }
 - parametros puede ser []
+- requerido debe ser !tieneDefault (defaults desde firma T-SQL; ver prompt de requerido arriba)
 - NO devolver CodigoSQL en slim (solo usarlo en memoria para el comentario)
 - Preferí DTO tipado en lugar de dynamic anónimo
 - includeSql=true puede seguir legacy { NombreSP, CodigoSQL }

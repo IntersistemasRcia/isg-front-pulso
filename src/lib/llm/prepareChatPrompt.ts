@@ -20,6 +20,11 @@ import {
 import { selectRelevantSps } from "@/lib/pulso/selectRelevantSps";
 import type { SpArquitectura } from "@/lib/pulso/types";
 
+export type SpCandidateDebug = {
+  nombre: string;
+  descripcion?: string;
+};
+
 export type PreparedChatPrompt = {
   system: string;
   tools: ReturnType<typeof buildPulsoTools>;
@@ -29,6 +34,10 @@ export type PreparedChatPrompt = {
   tokenBudget?: number;
   messageCount: number;
   toolResultsKb: number;
+  /** Top-K del ranking léxico (entran al prompt salvo tool-only). */
+  spTopK?: number;
+  /** Candidatos rankeados para este turno (debug / headers). */
+  spCandidates: SpCandidateDebug[];
 };
 
 type PrepareOptions = {
@@ -122,6 +131,10 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
   const followUpContext = buildFollowUpContextHint(messages);
   const spTopK = definition?.relevantSpTopK;
   const relevantCatalog = selectRelevantSps(userQueryContext, catalog, spTopK);
+  const spCandidates: SpCandidateDebug[] = relevantCatalog.map((sp) => ({
+    nombre: sp.nombre,
+    descripcion: (sp.descripcion ?? sp.description ?? "").trim() || undefined,
+  }));
   const alternativesHint = formatClosestAlternativesHint(relevantCatalog, 3);
   const messagesTokens = estimateMessagesTokens(messages);
   const historyTokens = estimateTokens(historySummary ?? "");
@@ -212,5 +225,7 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
     tokenBudget: budget,
     messageCount: messages.length,
     toolResultsKb,
+    spTopK,
+    spCandidates,
   };
 }

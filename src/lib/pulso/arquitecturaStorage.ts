@@ -28,6 +28,7 @@ export function toStoredArquitectura(catalog: SpArquitectura[]): SpArquitecturaS
         nombre: p.nombre,
         tipo: p.tipo ?? p.type,
         requerido: p.requerido ?? p.required,
+        ...(p.tieneDefault !== undefined ? { tieneDefault: p.tieneDefault } : {}),
         esOutput: false,
       })),
     })),
