@@ -120,3 +120,29 @@ export function formatArquitecturaForPrompt(
     ...lines,
   ].join("\n");
 }
+
+/**
+ * Hint interno: 1–3 consultas más cercanas al ranking, en lenguaje de negocio
+ * (para ofrecer alternativas cuando no hay match exacto).
+ */
+export function formatClosestAlternativesHint(
+  rankedCatalog: SpArquitectura[],
+  limit = 3,
+): string | undefined {
+  if (rankedCatalog.length === 0) return undefined;
+
+  const lines = rankedCatalog.slice(0, limit).map((sp, index) => {
+    const name = getSpNombre(sp);
+    const desc = getSpDescripcion(sp);
+    const params = formatSpParamHint(sp);
+    const business = desc || name.replace(/^sp_ISG_Vision_/i, "").replace(/_/g, " ");
+    return `${index + 1}) ${business} [interno: ${name}; params: ${params}]`;
+  });
+
+  return [
+    "## Alternativas cercanas a la consulta del usuario (USO INTERNO)",
+    "Si no hay una consulta que cubra exactamente el pedido, NO inventes errores de acceso ni digas que no se pudo obtener la información.",
+    "Ofrecé al usuario 1 o 2 de estas opciones en lenguaje de negocio (sin nombrar el SP técnico), pedí el dato faltante si hace falta, y ejecutá la que elija o la más cercana si ya tiene params.",
+    ...lines,
+  ].join("\n");
+}
