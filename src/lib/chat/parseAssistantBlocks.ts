@@ -14,6 +14,12 @@ type FenceKind = "chart" | "excel";
 
 const FENCE_RE = /```(chart|excel)[^\n]*\n([\s\S]*?)```/gi;
 
+const CHART_PARSE_FAIL_HINT =
+  "_No pude mostrar el gráfico: el bloque vino con formato inválido. Pedime de nuevo el comparativo (meses/semanas/días)._\n\n";
+
+const EXCEL_PARSE_FAIL_HINT =
+  "_No pude armar la descarga Excel: el bloque vino con formato inválido. Pedime de nuevo exportar los datos._\n\n";
+
 function blockFromFence(lang: string, payload: string): AssistantBlock | null {
   if (lang === "chart") {
     const spec = parseChartSpec(payload);
@@ -26,9 +32,19 @@ function blockFromFence(lang: string, payload: string): AssistantBlock | null {
   return null;
 }
 
+function fallbackMarkdownForInvalidFence(lang: FenceKind, payload: string): AssistantBlock {
+  const hint = lang === "chart" ? CHART_PARSE_FAIL_HINT : EXCEL_PARSE_FAIL_HINT;
+  const trimmed = payload.trim();
+  const preview = trimmed
+    ? `\n\`\`\`json\n${trimmed.slice(0, 800)}${trimmed.length > 800 ? "\n…" : ""}\n\`\`\`\n`
+    : "";
+  return { kind: "markdown", text: `${hint}${preview}` };
+}
+
 /**
  * Parte el texto del asistente en Markdown y bloques ```chart / ```excel cerrados.
  * Un fence incompleto (streaming) queda como Markdown.
+ * Un fence cerrado inválido no se traga: se muestra aviso + preview del JSON.
  */
 export function parseAssistantBlocks(text: string): AssistantBlock[] {
   const blocks: AssistantBlock[] = [];
@@ -40,8 +56,13 @@ export function parseAssistantBlocks(text: string): AssistantBlock[] {
     if (before.trim()) blocks.push({ kind: "markdown", text: before });
 
     const lang = (match[1] ?? "").toLowerCase() as FenceKind;
-    const parsed = blockFromFence(lang, match[2] ?? "");
-    if (parsed) blocks.push(parsed);
+    const payload = match[2] ?? "";
+    const parsed = blockFromFence(lang, payload);
+    if (parsed) {
+      blocks.push(parsed);
+    } else if (lang === "chart" || lang === "excel") {
+      blocks.push(fallbackMarkdownForInvalidFence(lang, payload));
+    }
 
     lastIndex = index + match[0].length;
   }

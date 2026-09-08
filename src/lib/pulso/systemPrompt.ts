@@ -56,13 +56,20 @@ export function buildPulsoSystemPrompt({
 
     "## Gráficos y Excel (solo si el usuario lo pidió)",
     "- Por defecto respondé con tabla Markdown o viñetas. NO agregues bloques chart ni excel.",
-    "- Gráfico: solo si pidió gráfico, chart, torta, barras, línea o verlo visual. Entonces, además de la tabla, UN bloque ```chart con JSON: {\"type\":\"bar\"|\"line\"|\"pie\",\"title\":\"...\",\"labelKey\":\"etiqueta\",\"valueKey\":\"numero\",\"data\":[{...}]}. bar=categorías, line=tiempo, pie=participación. Máx. 20 filas.",
+    "- Disparadores de gráfico: gráfico, grafico, chart, torta, barras, línea, verlo visual; también «comparativo/comparativa en gráfico», «compará … en un gráfico», vs/entre meses-semanas-días cuando pide gráfico o visualización. Si solo pide comparar en texto/tabla, NO agregues chart.",
+    "- Si pidió gráfico: (1) consultá el ERP con ejecutarConsultaPulso (una vez por período si compara meses/semanas/días), (2) mostrá tabla o totales breves, (3) OBLIGATORIO emitir UN bloque cerrado ```chart con JSON válido en la línea siguiente al fence. NUNCA digas «acá el gráfico» sin ese fence.",
+    "- Formato exacto del JSON chart: {\"type\":\"bar\"|\"line\"|\"pie\",\"title\":\"...\",\"labelKey\":\"etiqueta\",\"valueKey\":\"numero\",\"data\":[{...}]}. bar=categorías o comparación de períodos; line=serie temporal (días/semanas); pie=participación. Máx. 20 filas en data.",
+    "- Comparativa de meses/semanas/días: type \"bar\" (pocos períodos) o \"line\" (muchos puntos). labelKey = nombre del período (ej. \"Abril 2026\", \"Semana 1\", \"01/06\"); valueKey = métrica (ej. \"ventas\"). data = un objeto por período con totales de la tool (no inventes números).",
+    "- Ejemplo de fence (respetá saltos de línea reales): abrir ```chart , luego una sola línea JSON como {\"type\":\"bar\",\"title\":\"Ventas netas\",\"labelKey\":\"mes\",\"valueKey\":\"ventas\",\"data\":[{\"mes\":\"Abril 2026\",\"ventas\":3370350.36},{\"mes\":\"Mayo 2026\",\"ventas\":2929199.45}]} y cerrar ```.",
+    "- Meses: FechaDesde/FechaHasta del 1 al último día de cada mes. Semanas: rango completo de cada semana. Días: un punto por día o agregá por semana si superás 20 puntos.",
+    "- Si no podés armar el JSON chart, decilo en una frase y ofrecé reintentar; no finjas que hay gráfico.",
     "- Excel: solo si pidió Excel, planilla, xlsx o descargar los datos. Entonces UN bloque ```excel: {\"title\":\"...\",\"sheetName\":\"Datos\",\"columns\":[\"col1\"],\"data\":[{...}]}. Máx. 200 filas.",
-    "- Si pidió ambos, podés emitir los dos bloques. Datos solo de la tool; no inventes números. No expliques los bloques al usuario (el sistema los dibuja o descarga).",
+    "- Si pidió ambos, podés emitir los dos bloques. Datos solo de la tool. No expliques los fences al usuario (el sistema los dibuja o descarga).",
 
     "## Fechas y períodos (uso interno)",
     "- Si el usuario indica un período relativo o por semana/mes, calculá DesdeFecha y HastaFecha vos (formato dd/MM/yyyy).",
     "- Ejemplo: «2da semana de abril de 2026» → DesdeFecha 02/04/2026, HastaFecha 08/04/2026.",
+    "- Para comparar dos meses (abril vs mayo), ejecutá dos consultas con los rangos de cada mes y después armá el chart con los totales.",
     "- No le repitas al usuario el cálculo salvo que sea útil en lenguaje simple; ejecutá la consulta directamente.",
 
     "## Cómo consultar el ERP (uso interno)",
