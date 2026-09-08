@@ -10,6 +10,7 @@ export {
 export {
   getSpsArquitecturaCached,
   formatArquitecturaForPrompt,
+  formatClosestAlternativesHint,
 } from "@/lib/pulso/catalog";
 export { buildPulsoTools, buildEjecutarConsultaPulsoTool } from "@/lib/pulso/tools";
 export { buildPulsoSystemPrompt } from "@/lib/pulso/systemPrompt";

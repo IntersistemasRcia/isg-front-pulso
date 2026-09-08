@@ -13,7 +13,10 @@ import {
 } from "@/lib/chat/buildUserQueryContext";
 import { buildPulsoSystemPrompt } from "@/lib/pulso/systemPrompt";
 import { buildPulsoTools } from "@/lib/pulso/tools";
-import type { PromptCatalogMode } from "@/lib/pulso/catalog";
+import {
+  formatClosestAlternativesHint,
+  type PromptCatalogMode,
+} from "@/lib/pulso/catalog";
 import { selectRelevantSps } from "@/lib/pulso/selectRelevantSps";
 import type { SpArquitectura } from "@/lib/pulso/types";
 
@@ -119,6 +122,7 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
   const followUpContext = buildFollowUpContextHint(messages);
   const spTopK = definition?.relevantSpTopK;
   const relevantCatalog = selectRelevantSps(userQueryContext, catalog, spTopK);
+  const alternativesHint = formatClosestAlternativesHint(relevantCatalog, 3);
   const messagesTokens = estimateMessagesTokens(messages);
   const historyTokens = estimateTokens(historySummary ?? "");
   const toolResultsKb = estimateToolResultsKb(messages);
@@ -132,6 +136,14 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
 
   const fixedOverhead = messagesTokens + historyTokens + 400; // tools + instrucciones base
 
+  const promptBase = {
+    companyName,
+    clienteId,
+    historySummary,
+    followUpContext,
+    alternativesHint,
+  };
+
   let chosenMode: PromptCatalogMode = definition?.promptMode ?? "full";
   let catalogInPrompt = true;
   let system = "";
@@ -144,11 +156,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
       if (mode === "tool-only" || mode === "minimal") {
         catalogInPrompt = mode !== "tool-only";
         system = buildPulsoSystemPrompt({
-          companyName,
-          clienteId,
+          ...promptBase,
           catalog: mode === "tool-only" ? [] : relevantCatalog,
-          historySummary,
-          followUpContext,
           promptMode: mode,
         });
         tools = buildPulsoTools(token, catalog, {
@@ -158,11 +167,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
       } else {
         catalogInPrompt = true;
         system = buildPulsoSystemPrompt({
-          companyName,
-          clienteId,
+          ...promptBase,
           catalog: relevantCatalog,
-          historySummary,
-          followUpContext,
           promptMode: mode,
         });
         tools = buildPulsoTools(token, catalog, {
@@ -185,11 +191,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
     chosenMode = definition?.promptMode ?? "full";
     catalogInPrompt = chosenMode !== "tool-only";
     system = buildPulsoSystemPrompt({
-      companyName,
-      clienteId,
+      ...promptBase,
       catalog: catalogInPrompt ? relevantCatalog : [],
-      historySummary,
-      followUpContext,
       promptMode: chosenMode,
     });
     tools = buildPulsoTools(token, catalog, {
