@@ -153,6 +153,9 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 | Timeout 25s | SQL lento o API Pulso no responde |
 | Parámetros inventados (LikeTerm) | Catálogo viejo en localStorage: borrar `pulso.sp.arquitectura*` |
 | Sin `descripcion` en arquitectura | Comentario `-- Pulso:` ausente en el SP, o API aún no parsea `sys.sql_modules` |
+| «No tengo acceso al catálogo de marcas» | `GetMarcas` ausente del slim (0 params / INNER JOIN) o el LLM no llamó tool; verificar `/SPs_arquitectura` y limpiar LS `pulso.sp.arquitectura.v3` |
+| «No hay ventas de junio» y luego sí con año | Alucinación sin tool o mes sin año; el prompt fuerza año calendario actual + tool antes de negar |
+| Connection a otra base (Biamaq vs Cheek) | Alinear connection string de isg-api-pulso a la DB donde están los SP Vision |
 
 ## Prompt para implementar `descripcion` en isg-api-pulso
 

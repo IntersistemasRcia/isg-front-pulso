@@ -124,6 +124,12 @@ main {
 }
 
 /* Markdown en burbujas del chat */
+.markdown-body {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .markdown-body p {
   margin-bottom: 0.5em;
 }
@@ -137,10 +143,22 @@ main {
   margin: 0.5em 0 0.5em 1.25em;
 }
 
-.markdown-body table {
+.markdown-table-wrap {
+  display: block;
   width: 100%;
-  border-collapse: collapse;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   margin: 0.75em 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.markdown-body table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  margin: 0;
   font-size: var(--font-size-sm);
 }
 
@@ -149,11 +167,15 @@ main {
   border: 1px solid var(--color-border);
   padding: 0.4em 0.65em;
   text-align: left;
+  white-space: nowrap;
 }
 
 .markdown-body th {
   background: var(--color-surface-muted);
   font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .markdown-body code {
