@@ -122,13 +122,17 @@ function normalizeParamItem(
   const tieneDefault = resolveTieneDefaultFlag(obj);
   const requeridoRaw = obj.requerido ?? obj.required ?? obj.Requerido;
 
-  // Contrato API: requerido + tieneDefault. Si falta requerido, se deriva de tieneDefault.
-  const requerido =
-    requeridoRaw !== undefined && requeridoRaw !== null
-      ? Boolean(requeridoRaw)
-      : tieneDefault !== undefined
-        ? !tieneDefault
-        : true;
+  // tieneDefault:true gana ante inconsistencias (API con requerido:true erróneo).
+  let requerido: boolean;
+  if (tieneDefault === true) {
+    requerido = false;
+  } else if (requeridoRaw !== undefined && requeridoRaw !== null) {
+    requerido = Boolean(requeridoRaw);
+  } else if (tieneDefault === false) {
+    requerido = true;
+  } else {
+    requerido = true;
+  }
 
   return {
     nombre,

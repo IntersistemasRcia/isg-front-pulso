@@ -76,7 +76,14 @@ Fuente: [SqlEjecutorService.cs](https://github.com/IntersistemasRcia/isg-api-pul
 - **Importante:** `sys.parameters.has_default_value` es **casi siempre 0** en SPs T-SQL (limitación de SQL Server). No alcanza con mapear solo esa columna: hay que inferir defaults desde `sys.sql_modules.definition` (firma `CREATE/ALTER PROC … AS`).
 - Tras redeploy: limpiar LS `pulso.sp.arquitectura.v3` y esperar TTL del cache server (~5 min) o reiniciar Next.
 
-El front (`normalizeArquitectura.ts`) confía en `requerido` del API; si falta, deriva `!tieneDefault`.
+El front (`normalizeArquitectura.ts`): si `tieneDefault === true` → trata el param como **opcional** aunque el API mande `requerido: true` (defensa). Si no hay default, respeta `requerido`; si falta todo, asume requerido.
+
+### Checklist post-deploy arquitectura
+
+1. Redeploy Kestrel con parseo de defaults (`beb8130`+).
+2. `GET /api/v1/pulso/SPs_arquitectura` crudo → `IDSucursal.requerido === false` en SPs con `= NULL`.
+3. En el browser: borrar `localStorage.pulso.sp.arquitectura.v3` (o logout/login) y reiniciar Next si hace falta.
+4. Chat sin sucursal en un SP opcional → no debe devolver `MISSING_REQUIRED_PARAMS` por `IDSucursal`.
 
 ### Convención de descripción en SQL
 
@@ -174,8 +181,16 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 | «No hay ventas de junio» y luego sí con año | Alucinación sin tool o mes sin año; el prompt fuerza año calendario actual + tool antes de negar |
 | «No se pudo acceder» sin tool en Network | El modelo inventó un fallo; el prompt + `formatClosestAlternativesHint` deben ofrecer 1–2 alternativas de negocio |
 | Connection a otra base (Biamaq vs Cheek) | Alinear connection string de isg-api-pulso a la DB donde están los SP Vision |
-| `IDSucursal` sale `requerido: true` con `= NULL` | Backend no infiere default desde definition (has_default_value T-SQL = 0). Ver prompt abajo + limpiar LS v3 |
-| Ver SPs candidatos del turno | Network → `POST /api/chat` → headers `X-Pulso-Sp-*`, o chat con `?debug=1` |
+| `IDSucursal` sale `requerido: true` con `= NULL` | Backend sin parseo de firma o LS viejo. Redeploy + clear `pulso.sp.arquitectura.v3` |
+| Ver SPs candidatos del turno | Network → `POST /api/chat` → headers `X-Pulso-Sp-Candidates`, o chat `?debug=1` |
+| Ver SP **ejecutado** / fallido | `pm2 logs` → `[pulso] exec sp=… ok=… paramsKeys=… missing=…`; o `?debug=1` → “SP ejecutado / intentado” |
+| `messages` vs `raw_messages` en log `[chat]` | `raw_messages` = historial del cliente; `messages` = tras `windowMessages` (últimos 12). Tokens crecen con la ventana + tool results (`tool_results_kb`) |
+
+## Debug operativo (PM2 + `?debug=1`)
+
+- Log siempre (también production): `[pulso] exec sp=… ok=true|false ms=… paramsKeys=FechaDesde,FechaHasta [code=…] [missing=…] [rows=N]`
+- Chat con `?debug=1`: panel con candidatos (headers) + **todas** las tool calls del último turno assistant (ok / fail / missing).
+- No hay header `X-Pulso-Sp-Executed` (streaming lo vaciaría); la fuente de verdad en servidor es el log.
 
 ## Prompt para implementar `requerido` / `tieneDefault` en isg-api-pulso
 

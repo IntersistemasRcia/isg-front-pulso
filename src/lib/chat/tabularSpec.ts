@@ -26,18 +26,99 @@ export const excelSpecSchema = z.object({
 
 export type ExcelSpec = z.infer<typeof excelSpecSchema>;
 
-/** Interpreta números JSON o strings AR/US (1.234,56 / 1,234.56). */
+/** Interpreta números JSON o strings AR/US (1.234,56 / 1,234.56 / 3370350.36). */
 export function coerceNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string") return null;
-  const trimmed = value.trim().replace(/\s/g, "");
+  let trimmed = value.trim().replace(/\s/g, "");
   if (!trimmed) return null;
-  const normalized =
-    trimmed.includes(",") && trimmed.lastIndexOf(",") > trimmed.lastIndexOf(".")
-      ? trimmed.replace(/\./g, "").replace(",", ".")
-      : trimmed.replace(/,/g, "");
+  // Prefijo/sufijo moneda o %
+  trimmed = trimmed.replace(/^\$/, "").replace(/%$/, "");
+  if (!trimmed || /[a-zA-Z]/.test(trimmed)) return null;
+
+  const lastComma = trimmed.lastIndexOf(",");
+  const lastDot = trimmed.lastIndexOf(".");
+  let normalized: string;
+  if (lastComma >= 0 && lastDot >= 0) {
+    // El separador más a la derecha es el decimal
+    if (lastComma > lastDot) {
+      normalized = trimmed.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = trimmed.replace(/,/g, "");
+    }
+  } else if (lastComma >= 0) {
+    // Solo comas: decimal AR si hay una coma con 1–2 dígitos; si no, miles US
+    const after = trimmed.slice(lastComma + 1);
+    normalized =
+      /^\d{1,2}$/.test(after) && (trimmed.match(/,/g) ?? []).length === 1
+        ? trimmed.replace(",", ".")
+        : trimmed.replace(/,/g, "");
+  } else if (lastDot >= 0) {
+    const after = trimmed.slice(lastDot + 1);
+    const dots = (trimmed.match(/\./g) ?? []).length;
+    // Varios puntos → miles AR; un punto con 1–2 decimales → decimal US; un punto con 3 dígitos → miles
+    if (dots > 1) {
+      normalized = trimmed.replace(/\./g, "");
+    } else if (/^\d{1,2}$/.test(after)) {
+      normalized = trimmed;
+    } else if (/^\d{3}$/.test(after)) {
+      normalized = trimmed.replace(/\./g, "");
+    } else {
+      normalized = trimmed;
+    }
+  } else {
+    normalized = trimmed;
+  }
+
   const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
+}
+
+const arNumber = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
+
+export function formatArNumber(value: unknown): string {
+  const n = typeof value === "number" ? value : coerceNumber(value);
+  if (n == null) return String(value ?? "");
+  return arNumber.format(n);
+}
+
+const METRIC_HEADER_RE =
+  /ventas?|margen|neta?s?|total(es)?|importe|monto|precio|costo|saldo|bruto|%|porcentaje|promedio|ticket/i;
+
+const DATE_CELL_RE = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/;
+
+/**
+ * Formatea una celda de tabla Markdown a es-AR solo si parece importe/métrica.
+ * Evita IDs, códigos y conteos enteros chicos sin header de dinero.
+ */
+export function formatMetricCell(
+  raw: unknown,
+  columnHeader?: string,
+): string | null {
+  if (raw == null) return null;
+  const original = String(raw).trim();
+  if (!original || DATE_CELL_RE.test(original)) return null;
+
+  const hasPercent = /%\s*$/.test(original);
+  const n = coerceNumber(original);
+  if (n == null) return null;
+
+  const stripped = original.replace(/^\$/, "").replace(/%$/, "").trim();
+  const hasDecimalSep =
+    /,\d{1,2}$/.test(stripped.replace(/\s/g, "")) ||
+    (/\.\d{1,2}$/.test(stripped.replace(/\s/g, "")) &&
+      (stripped.match(/\./g) ?? []).length === 1);
+
+  const headerSuggestsMetric =
+    Boolean(columnHeader) && METRIC_HEADER_RE.test(columnHeader ?? "");
+
+  // Enteros puros (IDs / conteos) no se formatean salvo header de métrica
+  const isPureInteger = Number.isInteger(n) && !hasDecimalSep && !hasPercent;
+  if (isPureInteger && !headerSuggestsMetric) return null;
+  if (!hasDecimalSep && !hasPercent && !headerSuggestsMetric) return null;
+
+  const formatted = formatArNumber(n);
+  return hasPercent ? `${formatted}%` : formatted;
 }
 
 function parseJsonObject(raw: string): unknown | null {
@@ -108,12 +189,4 @@ export function coalescePieSlices(spec: ChartSpec): ChartSpec {
     ...spec,
     data: [...head, { [spec.labelKey]: "Otros", [spec.valueKey]: others }],
   };
-}
-
-const arNumber = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
-
-export function formatArNumber(value: unknown): string {
-  const n = typeof value === "number" ? value : coerceNumber(value);
-  if (n == null) return String(value ?? "");
-  return arNumber.format(n);
 }

@@ -70,7 +70,8 @@ export function buildPulsoSystemPrompt({
     "- Para búsquedas de clientes por apellido, nombre o CUIT: usá los parámetros de búsqueda del catálogo del SP de clientes. No pidas fechas si ese SP no tiene DesdeFecha/HastaFecha en su firma.",
     "- Pedí fechas solo cuando el SP del catálogo requiere DesdeFecha, HastaFecha u otro parámetro de fecha obligatorio Y el usuario no dio ningún período.",
     "- Si el usuario ya dio el dato (fechas, apellido, período como «2da semana de abril», código de rubro), ejecutá la consulta sin pedir confirmaciones.",
-    "- Presentá resultados con tablas Markdown o viñetas; números claros; sin jerga de sistemas.",
+    "- Presentá resultados con tablas Markdown o viñetas; sin jerga de sistemas.",
+    "- Importes y porcentajes en formato argentino: miles con punto y decimales con coma (ej. 3.370.350,36 y 12,5%). No uses formato anglosajón (3,370,350.36).",
     "- NUNCA pidas ni ofrezcas imágenes, fotos, scans, PDFs, Word ni archivos adjuntos. No inventes links de descarga ni pegues base64.",
     "- No uses tools de visión ni de generación de archivos: Pulso no las tiene.",
 
