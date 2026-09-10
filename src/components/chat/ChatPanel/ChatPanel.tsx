@@ -12,6 +12,7 @@ import {
   parsePulsoChatDebugHeaders,
   type PulsoChatDebugInfo,
 } from "@/lib/chat/parsePulsoChatHeaders";
+import { extractToolExecutionsFromParts } from "@/lib/chat/extractToolExecutions";
 import { syncSpArquitecturaFromApi } from "@/lib/pulso/arquitecturaStorage";
 import { getStoredToken } from "@/utils/api";
 import { toUserMessage } from "@/utils/userFacingErrors";
@@ -110,6 +111,17 @@ export function ChatPanel() {
       ? messages[messages.length - 1].id
       : null;
 
+  const toolExecutions = useMemo(() => {
+    if (!debugEnabled) return [];
+    // Todas las ejecuciones del último mensaje assistant (puede haber varias tools).
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (msg.role !== "assistant") continue;
+      return extractToolExecutionsFromParts(msg.parts);
+    }
+    return [];
+  }, [debugEnabled, messages]);
+
   function getBusyLabel(): string {
     if (status === "submitted") return "Iniciando consulta…";
     const last = messages[messages.length - 1];
@@ -138,6 +150,8 @@ export function ChatPanel() {
     await sendMessage({ text });
   }
 
+  const showDebug = debugEnabled && (debugInfo || toolExecutions.length > 0);
+
   return (
     <div className={styles.chat}>
       <header className={styles.header}>
@@ -148,30 +162,65 @@ export function ChatPanel() {
         />
       </header>
 
-      {debugEnabled && debugInfo ? (
-        <details className={styles.debugPanel}>
+      {showDebug ? (
+        <details className={styles.debugPanel} open>
           <summary className={styles.debugSummary}>
-            SPs candidatos (debug)
-            {debugInfo.promptMode ? ` · ${debugInfo.promptMode}` : ""}
-            {debugInfo.spTopK ? ` · topK=${debugInfo.spTopK}` : ""}
+            Debug Pulso
+            {debugInfo?.promptMode ? ` · ${debugInfo.promptMode}` : ""}
+            {debugInfo?.spTopK ? ` · topK=${debugInfo.spTopK}` : ""}
           </summary>
-          <p className={styles.debugMeta}>
-            {debugInfo.modelId ? `model=${debugInfo.modelId}` : null}
-            {debugInfo.modelSource ? ` · source=${debugInfo.modelSource}` : null}
-            {debugInfo.catalogInPrompt != null
-              ? ` · catalogInPrompt=${String(debugInfo.catalogInPrompt)}`
-              : null}
-          </p>
-          <ol className={styles.debugList}>
-            {debugInfo.candidates.map((c) => (
-              <li key={c.nombre}>
-                <code>{c.nombre}</code>
-                {c.descripcion ? (
-                  <span className={styles.debugDesc}> — {c.descripcion}</span>
-                ) : null}
-              </li>
-            ))}
-          </ol>
+          {debugInfo ? (
+            <>
+              <p className={styles.debugMeta}>
+                {debugInfo.modelId ? `model=${debugInfo.modelId}` : null}
+                {debugInfo.modelSource ? ` · source=${debugInfo.modelSource}` : null}
+                {debugInfo.catalogInPrompt != null
+                  ? ` · catalogInPrompt=${String(debugInfo.catalogInPrompt)}`
+                  : null}
+              </p>
+              <p className={styles.debugSectionTitle}>SPs candidatos (ranking)</p>
+              <ol className={styles.debugList}>
+                {debugInfo.candidates.map((c) => (
+                  <li key={c.nombre}>
+                    <code>{c.nombre}</code>
+                    {c.descripcion ? (
+                      <span className={styles.debugDesc}> — {c.descripcion}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : null}
+
+          {toolExecutions.length > 0 ? (
+            <>
+              <p className={styles.debugSectionTitle}>SP ejecutado / intentado</p>
+              <ol className={styles.debugList}>
+                {toolExecutions.map((exec, idx) => (
+                  <li key={`${exec.nombreSp}-${idx}`}>
+                    <code>{exec.nombreSp}</code>
+                    {exec.ok === true ? (
+                      <span className={styles.debugOk}> — ok</span>
+                    ) : null}
+                    {exec.ok === false ? (
+                      <span className={styles.debugFail}>
+                        {" "}
+                        — fail
+                        {exec.code ? ` (${exec.code})` : ""}
+                        {exec.missingRequired?.length
+                          ? ` missing=${exec.missingRequired.join(",")}`
+                          : ""}
+                        {exec.message ? ` · ${exec.message}` : ""}
+                      </span>
+                    ) : null}
+                    {exec.ok == null ? (
+                      <span className={styles.debugDesc}> — {exec.state}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : null}
         </details>
       ) : null}
 
