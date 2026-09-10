@@ -95,6 +95,17 @@ export function extractParamsFromSql(codigoSql: string): SpParametroArquitectura
   return Array.from(seen.values());
 }
 
+function resolveTieneDefaultFlag(obj: Record<string, unknown>): boolean | undefined {
+  const raw =
+    obj.tieneDefault ??
+    obj.TieneDefault ??
+    obj.hasDefault ??
+    obj.HasDefault ??
+    obj.has_default_value;
+  if (raw === undefined || raw === null) return undefined;
+  return Boolean(raw);
+}
+
 function normalizeParamItem(
   raw: SpParametroArquitectura | Record<string, unknown>,
 ): SpParametroArquitectura | null {
@@ -108,15 +119,26 @@ function normalizeParamItem(
   if (esOutput) return null;
 
   const tipo = String(obj.tipo ?? obj.type ?? obj.TipoParametro ?? "").trim() || undefined;
-  const requerido =
-    obj.requerido ??
-    obj.required ??
-    (obj.TieneDefault != null ? !Boolean(obj.TieneDefault) : undefined);
+  const tieneDefault = resolveTieneDefaultFlag(obj);
+  const requeridoRaw = obj.requerido ?? obj.required ?? obj.Requerido;
+
+  // tieneDefault:true gana ante inconsistencias (API con requerido:true erróneo).
+  let requerido: boolean;
+  if (tieneDefault === true) {
+    requerido = false;
+  } else if (requeridoRaw !== undefined && requeridoRaw !== null) {
+    requerido = Boolean(requeridoRaw);
+  } else if (tieneDefault === false) {
+    requerido = true;
+  } else {
+    requerido = true;
+  }
 
   return {
     nombre,
     tipo: tipo?.toLowerCase(),
-    requerido: requerido === undefined ? true : Boolean(requerido),
+    requerido,
+    ...(tieneDefault !== undefined ? { tieneDefault } : {}),
     esOutput: false,
   };
 }

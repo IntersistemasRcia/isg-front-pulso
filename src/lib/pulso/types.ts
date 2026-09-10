@@ -6,6 +6,8 @@ export interface SpParametroArquitectura {
   type?: string;
   requerido?: boolean;
   required?: boolean;
+  /** true = el SP declara default (= NULL, = 0, …). */
+  tieneDefault?: boolean;
   /** true = OUTPUT (no enviar en POST /ejecutar-sp). */
   esOutput?: boolean;
   descripcion?: string;

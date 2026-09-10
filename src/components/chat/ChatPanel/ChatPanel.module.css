@@ -34,3 +34,49 @@
   border-bottom: 1px solid var(--color-border, #e2e8f0);
   background: var(--color-surface, #fff);
 }
+
+.debugPanel {
+  margin: 0.5rem 1.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--color-border, #cbd5e1);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-surface-muted, #f8fafc);
+  font-size: var(--font-size-sm, 0.85rem);
+  color: var(--color-text-muted, #475569);
+}
+
+.debugSummary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-text, #0f172a);
+}
+
+.debugMeta {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.8rem;
+}
+
+.debugList {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  line-height: 1.45;
+}
+
+.debugDesc {
+  color: var(--color-text-muted, #64748b);
+}
+
+.debugSectionTitle {
+  margin: 0.65rem 0 0.2rem;
+  font-weight: 600;
+  color: var(--color-text, #0f172a);
+  font-size: 0.8rem;
+}
+
+.debugOk {
+  color: var(--color-success, #15803d);
+}
+
+.debugFail {
+  color: var(--color-error, #b91c1c);
+}

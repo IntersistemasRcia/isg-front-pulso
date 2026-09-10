@@ -94,6 +94,31 @@ function buildAgentStepOptions(definition?: ModelDefinition) {
   };
 }
 
+function buildPulsoDebugHeaders(prepared: ReturnType<typeof prepareChatPrompt>): Record<string, string> {
+  const candidatesPayload = {
+    catalogInPrompt: prepared.catalogInPrompt,
+    candidates: prepared.spCandidates.map((c) => ({
+      n: c.nombre,
+      ...(c.descripcion ? { d: c.descripcion.slice(0, 120) } : {}),
+    })),
+  };
+
+  // Base64 URL-safe para no romper headers con unicode/espacios
+  const json = JSON.stringify(candidatesPayload);
+  const b64 =
+    typeof Buffer !== "undefined"
+      ? Buffer.from(json, "utf8").toString("base64url")
+      : btoa(unescape(encodeURIComponent(json)));
+
+  return {
+    "X-Pulso-Prompt-Mode": prepared.promptMode,
+    "X-Pulso-Sp-Top-K": String(prepared.spTopK ?? prepared.spCandidates.length),
+    "X-Pulso-Sp-Candidates": b64,
+    "Access-Control-Expose-Headers":
+      "X-Pulso-Model-Id, X-Pulso-Model-Source, X-Pulso-Prompt-Mode, X-Pulso-Sp-Top-K, X-Pulso-Sp-Candidates",
+  };
+}
+
 /**
  * Ejecuta el agente probando modelos en cadena.
  * Cloud: generateText (permite fallback ante 429 antes de responder).
@@ -138,12 +163,15 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
     try {
       const resolved = await resolveModel(userId, modelId);
       const dedupedCount = rawMessageCount ?? messages.length;
+      const candidateNames = prepared.spCandidates.map((c) => c.nombre).join(",");
       console.info(
         `[chat] model=${modelId} source=${resolved.source} ` +
           `prompt=${prepared.promptMode} tokens_est=${prepared.estimatedTokens}` +
           (prepared.tokenBudget ? ` budget=${prepared.tokenBudget}` : "") +
           ` messages=${prepared.messageCount} raw_messages=${dedupedCount} ` +
-          `tool_results_kb=${prepared.toolResultsKb} steps_max=${getMaxAgentSteps(definition)}`,
+          `tool_results_kb=${prepared.toolResultsKb} steps_max=${getMaxAgentSteps(definition)} ` +
+          `sp_top_k=${prepared.spTopK ?? prepared.spCandidates.length} ` +
+          `sp_candidates=${candidateNames || "(none)"}`,
       );
 
       const agentOptions = {
@@ -159,6 +187,7 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
       const pulsoHeaders = {
         "X-Pulso-Model-Id": resolved.modelId,
         "X-Pulso-Model-Source": resolved.source,
+        ...buildPulsoDebugHeaders(prepared),
       };
 
       if (definition?.streaming) {

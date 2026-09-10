@@ -48,6 +48,41 @@ export function normalizeToolParametros(
   return out;
 }
 
+function paramsKeysOf(record: Record<string, unknown>): string {
+  return Object.keys(record).join(",") || "(none)";
+}
+
+function countResultRows(result: Record<string, unknown>): number | undefined {
+  if (Array.isArray(result.rows)) return result.rows.length;
+  if (Array.isArray(result.data)) return result.data.length;
+  if (typeof result.totalRows === "number") return result.totalRows;
+  return undefined;
+}
+
+/** Log compacto siempre (PM2 / production). Sin filas ni valores de params. */
+function logPulsoExec(opts: {
+  nombreSp: string;
+  ok: boolean;
+  ms: number;
+  code?: string;
+  missing?: string[];
+  paramsKeys: string;
+  rows?: number;
+  message?: string;
+}): void {
+  const parts = [
+    `[pulso] exec sp=${opts.nombreSp}`,
+    `ok=${opts.ok}`,
+    `ms=${opts.ms}`,
+    `paramsKeys=${opts.paramsKeys}`,
+  ];
+  if (opts.code) parts.push(`code=${opts.code}`);
+  if (opts.missing?.length) parts.push(`missing=${opts.missing.join(",")}`);
+  if (opts.rows != null) parts.push(`rows=${opts.rows}`);
+  if (opts.message) parts.push(`message=${opts.message.slice(0, 120)}`);
+  console.info(parts.join(" "));
+}
+
 /**
  * Tool principal del agente Pulso: consulta datos ERP vía isg-api-pulso.
  * Parámetros validados contra GET /SPs_arquitectura (sys.parameters).
@@ -68,12 +103,17 @@ export function buildEjecutarConsultaPulsoTool(
     ].join(" "),
     inputSchema: ejecutarConsultaPulsoSchema,
     execute: async ({ nombreSp, parametros }) => {
+      const started = Date.now();
       const raw = normalizeToolParametros(parametros);
       const {
         parametros: parametrosRecord,
         warnings,
         missingRequired,
       } = coerceParamsForSp(nombreSp, raw, catalog);
+
+      const paramsKeys = paramsKeysOf(
+        Object.keys(parametrosRecord).length > 0 ? parametrosRecord : raw,
+      );
 
       if (warnings.length > 0) {
         console.warn(`[pulso] ${nombreSp} params:`, warnings.join(" | "));
@@ -84,9 +124,18 @@ export function buildEjecutarConsultaPulsoTool(
       );
 
       if (missingRequired.length > 0) {
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "MISSING_REQUIRED_PARAMS",
+          missing: missingRequired,
+          paramsKeys,
+        });
         return {
           ok: false,
           code: "MISSING_REQUIRED_PARAMS",
+          nombreSp,
           missingRequired,
           parametrosEsperados: catalogSp
             ? formatSpParamHint(catalogSp)
@@ -104,8 +153,17 @@ export function buildEjecutarConsultaPulsoTool(
         Object.keys(parametrosRecord).length === 0 &&
         Object.keys(raw).length > 0
       ) {
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "INVALID_PARAMS",
+          paramsKeys,
+        });
         return {
           ok: false,
+          code: "INVALID_PARAMS",
+          nombreSp,
           message:
             "Parámetros inválidos para esa consulta. Reintentá solo con los de entrada del catálogo.",
           parametrosEsperados: catalogSp
@@ -118,8 +176,17 @@ export function buildEjecutarConsultaPulsoTool(
       }
 
       if (!nombreSp.startsWith("sp_ISG_Vision_")) {
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "UNAUTHORIZED_SP",
+          paramsKeys,
+        });
         return {
           ok: false,
+          code: "UNAUTHORIZED_SP",
+          nombreSp,
           message: "Consulta no autorizada.",
           avisoUsuario:
             "Decile al usuario que esa consulta no está disponible y ofrecé otra forma de ayudar.",
@@ -131,16 +198,36 @@ export function buildEjecutarConsultaPulsoTool(
           { nombreSp, parametros: parametrosRecord },
           { sessionToken, signal: AbortSignal.timeout(25_000) },
         );
+        const ms = Date.now() - started;
         if (result.ok === false) {
+          const fail = result as Record<string, unknown>;
+          logPulsoExec({
+            nombreSp,
+            ok: false,
+            ms,
+            code: typeof fail.code === "string" ? fail.code : "PULSO_ERROR",
+            paramsKeys,
+            message: typeof fail.message === "string" ? fail.message : undefined,
+          });
           return truncateToolResult({
             ...result,
+            nombreSp,
             warnings: warnings.length ? warnings : undefined,
             avisoUsuario:
               "Explicá el problema en una frase simple al usuario (sin jerga técnica) y ofrecé reintentar o ajustar la búsqueda.",
           }, truncateOptions);
         }
+        const okResult = result as Record<string, unknown>;
+        logPulsoExec({
+          nombreSp,
+          ok: true,
+          ms,
+          paramsKeys,
+          rows: countResultRows(okResult),
+        });
         return truncateToolResult({
           ...result,
+          nombreSp,
           warnings: warnings.length ? warnings : undefined,
         }, truncateOptions);
       } catch (error) {
@@ -150,8 +237,21 @@ export function buildEjecutarConsultaPulsoTool(
               ? "La consulta al ERP tardó demasiado."
               : error.message
             : "Error al consultar el ERP";
+        const code =
+          error instanceof Error && error.name === "TimeoutError"
+            ? "TIMEOUT"
+            : "EXEC_ERROR";
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code,
+          paramsKeys,
+          message,
+        });
         return {
           ok: false,
+          code,
           message,
           nombreSp,
           parametros: parametrosRecord,
