@@ -27,6 +27,7 @@ type TableToolPreview = {
   key: string;
   rows: Array<Record<string, unknown>>;
   totalRows?: number;
+  totalExact?: boolean;
   caption?: string;
 };
 
@@ -43,9 +44,13 @@ function getExcelExportsFromTools(message: UIMessage): ExcelToolExport[] {
     if (typeof part.output !== "object") continue;
     const o = part.output as Record<string, unknown>;
     if (typeof o.exportId !== "string") continue;
+    // Solo botón Excel cuando la tool marcó delivery=excel y hay más de 50 filas.
+    if (o.delivery !== "excel") continue;
+    const totalRows = typeof o.totalRows === "number" ? o.totalRows : undefined;
+    if (totalRows != null && totalRows <= 50) continue;
     out.push({
       exportId: o.exportId,
-      totalRows: typeof o.totalRows === "number" ? o.totalRows : undefined,
+      totalRows,
       title: spTitle(o.nombreSp),
     });
   }
@@ -72,10 +77,13 @@ function getTablePreviewsFromTools(message: UIMessage): TableToolPreview[] {
     const rows = asObjectRows(rawRows);
     if (!rows.length) continue;
 
+    const totalExact = o.totalExact !== false;
     out.push({
       key: `tbl-${idx}-${typeof o.exportId === "string" ? o.exportId : idx}`,
       rows,
-      totalRows: typeof o.totalRows === "number" ? o.totalRows : rows.length,
+      totalRows:
+        totalExact && typeof o.totalRows === "number" ? o.totalRows : undefined,
+      totalExact,
       caption: spTitle(o.nombreSp),
     });
     idx += 1;
@@ -211,6 +219,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
                 key={tbl.key}
                 rows={tbl.rows}
                 totalRows={tbl.totalRows}
+                totalExact={tbl.totalExact}
                 caption={tbl.caption}
               />
             ))}

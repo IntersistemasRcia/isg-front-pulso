@@ -7,6 +7,8 @@ export type DataTablePreviewProps = {
   rows: Array<Record<string, unknown>>;
   /** Total real (si el preview está cortado). */
   totalRows?: number;
+  /** Si false, no presentar totalRows como COUNT exacto (p.ej. artifact del probe). */
+  totalExact?: boolean;
   caption?: string;
 };
 
@@ -32,6 +34,7 @@ function formatCell(value: unknown, column: string): string {
 export function DataTablePreview({
   rows,
   totalRows,
+  totalExact = true,
   caption,
 }: DataTablePreviewProps) {
   if (!rows.length) return null;
@@ -40,7 +43,16 @@ export function DataTablePreview({
 
   const shown = rows.length;
   const total = totalRows ?? shown;
-  const truncated = total > shown;
+  const hasMore = totalExact ? total > shown : true;
+
+  let meta: string;
+  if (!hasMore) {
+    meta = `${shown} registro${shown === 1 ? "" : "s"}`;
+  } else if (totalExact && totalRows != null) {
+    meta = `Mostrando ${shown} de ${total} registros`;
+  } else {
+    meta = `Mostrando los primeros ${shown} (hay más registros)`;
+  }
 
   return (
     <div className={styles.wrap}>
@@ -66,9 +78,7 @@ export function DataTablePreview({
         </table>
       </div>
       <p className={styles.meta}>
-        {truncated
-          ? `Mostrando ${shown} de ${total} registros`
-          : `${shown} registro${shown === 1 ? "" : "s"}`}
+        {meta}
         {columns.length > 6 ? " · desplazá horizontalmente para ver más columnas" : ""}
       </p>
     </div>
