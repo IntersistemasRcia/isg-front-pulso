@@ -117,20 +117,20 @@ export function buildResultLargeGate(options: {
   const avisoUsuario = hasFilters
     ? [
         `La consulta devolvió muchos registros (${totalRows}).`,
-        "NO muestres la tabla completa todavía.",
-        `Ofrecé en lenguaje de negocio: (1) acotar con filtros disponibles (${hints.join(", ")}),`,
-        `(2) ver solo los primeros ${RESULT_LARGE_THRESHOLD}, o (3) ver la respuesta completa (${totalRows} registros).`,
+        "NO muestres ninguna tabla markdown con esos datos todavía.",
+        `Ofrecé en lenguaje de negocio: (1) acotar con filtros (${hints.join(", ")}),`,
+        `(2) ver solo los primeros ${RESULT_LARGE_THRESHOLD} en el chat, o (3) descargar el listado completo en Excel (${totalRows} registros).`,
         "Si elige primeros 50 → reejecutá con modoResultado=preview50.",
-        "Si elige completo → reejecutá con modoResultado=completo.",
+        "Si elige completo / todos / Excel → reejecutá con modoResultado=completo (el sistema generará el Excel; vos solo confirmá la descarga).",
         "Si aporta un filtro → reejecutá con ese parámetro (sin modoResultado).",
         "No menciones SP, SQL ni nombres técnicos crudos de parámetros.",
       ].join(" ")
     : [
         `La consulta devolvió muchos registros (${totalRows}).`,
-        "NO muestres la tabla completa todavía.",
-        `Preguntá si desea ver los primeros ${RESULT_LARGE_THRESHOLD} resultados o la respuesta completa (${totalRows} registros).`,
+        "NO muestres ninguna tabla markdown con esos datos todavía.",
+        `Preguntá si desea ver los primeros ${RESULT_LARGE_THRESHOLD} en el chat o descargar el listado completo en Excel (${totalRows} registros).`,
         "Si elige primeros 50 → modoResultado=preview50.",
-        "Si elige completo → modoResultado=completo.",
+        "Si elige completo / todos / Excel → modoResultado=completo.",
         "No menciones SP, SQL ni nombres técnicos crudos.",
       ].join(" ");
 

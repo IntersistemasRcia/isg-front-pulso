@@ -209,6 +209,7 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 | Ver SP **ejecutado** / fallido | `pm2 logs` → `[pulso] exec sp=… ok=… paramsKeys=… missing=…`; o `?debug=1` → “SP ejecutado / intentado” |
 | `messages` vs `raw_messages` en log `[chat]` | `raw_messages` = historial del cliente; `messages` = tras `windowMessages` (últimos 12). Tokens crecen con la ventana + tool results (`tool_results_kb`) |
 | Chat pregunta 50 vs completo en listados grandes | Esperado: `RESULT_LARGE` (umbral 50). Log: `code=RESULT_LARGE` |
+| “Ver todos” solo muestra ~50 filas | Antes el LLM recibía el result truncado. Ahora `modoResultado=completo` genera Excel (`EXCEL_EXPORT`) + botón Descargar |
 | `limiteFilas` no reduce payload | Backend aún no implementa el wrapper; el front igual hace gate si `totalRows > 50` |
 
 ## Debug operativo (PM2 + `?debug=1`)
