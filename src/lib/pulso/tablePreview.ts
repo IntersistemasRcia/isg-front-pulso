@@ -1,7 +1,8 @@
 /** Helpers para preview UI de resultados tabulares (tool → MessageBubble). */
 
 export const WIDE_COLUMN_THRESHOLD = 6;
-export const UI_PREVIEW_MAX_ROWS = 15;
+/** Adelanto en el chat: siempre resumen; el Excel lleva el total. */
+export const UI_PREVIEW_MAX_ROWS = 50;
 
 export function countRowColumns(rows: unknown[]): number {
   const keys = new Set<string>();
