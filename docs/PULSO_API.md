@@ -158,15 +158,16 @@ Fuente en backend (`EjecutorController.cs`, clase `PeticionSpDto`):
 
 **Errores:** `{ "error": "...", "detalle": "..." }` con HTTP 400/500.
 
-### Gate de resultados grandes (`RESULT_LARGE`)
+### Gate de resultados grandes
 
-Umbral de negocio: **50 filas** (todos los SP, no solo Get*).
+Umbral de negocio: **50 filas**.
 
-1. Primera ejecución: el front pide `limiteFilas: 51` (probe). Si hay overflow, **reconsulta sin límite** para obtener el total real + Excel completo + adelanto de 50 en la UI.
-2. Si esa reconsulta falla → `RESULT_LARGE` sin inventar totales (el `51` del probe **no** es el COUNT; se habla de «más de 50»).
-3. Excel **solo si hay más de 50 filas** (= todas las filas). DataTable = resumen truncado (hasta 50) o tabla completa si ≤50.
-4. `modoResultado=preview50` = solo adelanto (sin Excel parcial). `completo` = Excel total + adelanto 50.
-5. Si hay parámetros opcionales no usados → el aviso ofrece filtrar / ver 50 / Excel.
+1. Primera ejecución: `limiteFilas: 50` (probe).
+2. Si el API responde con **`totalRows` real** + `truncated` / `totalRowsExact: true` → el front muestra adelanto de 50, dice el total exacto y **no** trae todo el listado todavía.
+3. Excel solo con `modoResultado=completo` y **más de 50** filas.
+4. Si el API aún no da COUNT (`totalRowsExact: false` o `totalRows` = tamaño del lote) → el front dice “más de 50” y no inventa 51.
+
+Contrato backend detallado + prompt para isg-api-pulso: [`docs/BACKEND_EJECUTAR_SP_RESULT_SIZE.md`](./BACKEND_EJECUTAR_SP_RESULT_SIZE.md).
 
 ## Reglas de negocio (backend)
 
@@ -209,9 +210,9 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 | Ver SPs candidatos del turno | Network → `POST /api/chat` → headers `X-Pulso-Sp-Candidates`, o chat `?debug=1` |
 | Ver SP **ejecutado** / fallido | `pm2 logs` → `[pulso] exec sp=… ok=… paramsKeys=… missing=…`; o `?debug=1` → “SP ejecutado / intentado” |
 | `messages` vs `raw_messages` en log `[chat]` | `raw_messages` = historial del cliente; `messages` = tras `windowMessages` (últimos 12). Tokens crecen con la ventana + tool results (`tool_results_kb`) |
-| Chat muestra “51 marcas” y luego 1962 | Antes el probe (`limiteFilas=51`) se tomaba como total. Ahora se reconsulta sin límite; Excel = total real; tabla = primeras 50 |
-| “Ver todos” solo muestra ~50 filas | Antes el LLM recibía el result truncado. Ahora `modoResultado=completo` genera Excel (`EXCEL_EXPORT`) + botón Descargar |
-| `limiteFilas` no reduce payload | Backend aún no implementa el wrapper; el front igual hace gate si `totalRows > 50` |
+| Chat muestra “51 marcas” y luego 1962 | API sin COUNT real (`totalRows`=lote). Ver `BACKEND_EJECUTAR_SP_RESULT_SIZE.md`. Front ya no afirma 51 si `totalRowsExact=false`. |
+| “Ver todos” solo muestra ~50 filas | Pedir `modoResultado=completo` → Excel + adelanto 50 |
+| `limiteFilas` no reduce payload | Backend aún no implementa el wrapper; el front igual hace gate si detecta overflow |
 
 ## Debug operativo (PM2 + `?debug=1`)
 

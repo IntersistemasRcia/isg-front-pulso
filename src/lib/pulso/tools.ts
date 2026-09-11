@@ -4,23 +4,22 @@ import { ejecutarSpPulso } from "@/lib/pulso/client";
 import { getSpNombre, getSpParametros } from "@/lib/pulso/catalog";
 import { selectRelevantSps } from "@/lib/pulso/selectRelevantSps";
 import { formatSpParamHint } from "@/lib/pulso/spParamResolver";
-import type { EjecutarSpResponse, SpArquitectura } from "@/lib/pulso/types";
+import type { SpArquitectura } from "@/lib/pulso/types";
 import { truncateToolResult, type TruncateToolResultOptions } from "@/lib/chat/truncateToolResult";
 import { coerceParamsForSp } from "@/lib/pulso/spParamResolver";
 import {
   RESULT_LARGE_PROBE_LIMIT,
   RESULT_LARGE_THRESHOLD,
-  buildResultLargeGate,
-  formatKnownTotalLabel,
-  listUnusedOptionalParams,
+  listOptionalParamHints,
   resolveResultSize,
   shouldGateLargeResult,
   type ModoResultado,
 } from "@/lib/pulso/resultSizeGate";
 import {
-  buildExcelSpecFromRows,
-  storePulsoExcelExport,
-} from "@/lib/pulso/exportStore";
+  buildCompleteListadoPayload,
+  buildLargePreviewPayload,
+  buildSmallListadoPayload,
+} from "@/lib/pulso/listadoUiPayload";
 import {
   UI_PREVIEW_MAX_ROWS,
   UI_TABLE_AVISO,
@@ -28,6 +27,7 @@ import {
   countRowColumns,
   slicePreviewRows,
 } from "@/lib/pulso/tablePreview";
+import { toEjecutarConsultaModelOutput } from "@/lib/pulso/toEjecutarConsultaModelOutput";
 
 const parametroItemSchema = z.object({
   nombre: z
@@ -58,7 +58,7 @@ const ejecutarConsultaPulsoSchema = z.object({
     .enum(["preview50", "completo"])
     .optional()
     .describe(
-      "Tras RESULT_LARGE: preview50 = primeros 50 en el chat; completo = Excel con todos los registros (no tabla markdown). Omitir en la primera ejecución.",
+      "Tras un listado grande: preview50 = adelanto en pantalla; completo = traer todas las filas y Excel si hay más de 50. Omitir en la primera ejecución.",
     ),
 });
 
@@ -77,13 +77,6 @@ export function normalizeToolParametros(
 
 function paramsKeysOf(record: Record<string, unknown>): string {
   return Object.keys(record).join(",") || "(none)";
-}
-
-function countResultRows(result: Record<string, unknown>): number | undefined {
-  if (typeof result.totalRows === "number") return result.totalRows;
-  if (Array.isArray(result.rows)) return result.rows.length;
-  if (Array.isArray(result.data)) return result.data.length;
-  return undefined;
 }
 
 function resolveLimiteFilas(modo: ModoResultado | undefined): number | undefined {
@@ -127,82 +120,6 @@ function spUiTitle(
 }
 
 /**
- * Listado grande: Excel solo si hay más de 50 filas (todas);
- * tabla = adelanto de hasta 50. Nunca Excel en consultas chicas.
- */
-function buildFullListadoUiPayload(options: {
-  nombreSp: string;
-  title: string;
-  allRows: unknown[];
-  optionalParamsUnused: string[];
-  warnings: string[];
-}): Record<string, unknown> {
-  const { nombreSp, title, allRows, optionalParamsUnused, warnings } = options;
-  const total = allRows.length;
-  const uiRows = slicePreviewRows(allRows, UI_PREVIEW_MAX_ROWS);
-  const offerExcel = total > RESULT_LARGE_THRESHOLD;
-  const spec = offerExcel ? buildExcelSpecFromRows(allRows, title) : null;
-  const exportId = spec ? storePulsoExcelExport(spec) : undefined;
-  const filterHints = buildResultLargeGate({
-    nombreSp,
-    totalRows: total,
-    totalExact: true,
-    atLeastRows: total,
-    truncated: false,
-    optionalParamsUnused,
-  }).optionalParamsHint;
-  const hasFilters = filterHints.length > 0;
-  const filterBit = hasFilters
-    ? `Alternativa: preguntá si desea filtrar por ${filterHints.join(", ")} (nombre o parcial).`
-    : "Si quiere acotar, pedile un criterio de negocio (nombre parcial, etc.).";
-
-  if (!offerExcel) {
-    return {
-      ok: true,
-      uiTable: true,
-      nombreSp,
-      rows: uiRows,
-      previewRows: uiRows,
-      totalRows: total,
-      totalExact: true,
-      mostrando: uiRows.length,
-      truncated: false,
-      columnCount: countRowColumns(allRows),
-      warnings: warnings.length ? warnings : undefined,
-      avisoUsuario: [
-        `Hay ${total} registros; la UI ya muestra la tabla completa.`,
-        "NO ofrezcas ni menciones Excel (solo se ofrece cuando hay más de 50 registros).",
-        "NO armes tabla markdown.",
-        UI_TABLE_AVISO,
-      ].join(" "),
-    };
-  }
-
-  return {
-    ok: true,
-    ...(exportId ? { delivery: "excel" as const, exportId } : {}),
-    uiTable: true,
-    nombreSp,
-    rows: uiRows,
-    previewRows: uiRows,
-    totalRows: total,
-    totalExact: true,
-    mostrando: uiRows.length,
-    truncated: total > uiRows.length,
-    columnCount: countRowColumns(allRows),
-    warnings: warnings.length ? warnings : undefined,
-    avisoUsuario: [
-      `Existen ${total} registros. La UI muestra las primeras ${uiRows.length}` +
-        (exportId ? ` y el botón Excel con las ${total} filas completas.` : "."),
-      `Respondé en 1–3 frases, tono negocio, por ejemplo: «Existen ${total} marcas; acá te muestro las primeras ${uiRows.length}. Si querés ver todas, usá el Excel de la interfaz.»`,
-      filterBit,
-      "NO digas un total distinto (p.ej. 51). NO armes tabla markdown.",
-      UI_TABLE_AVISO,
-    ].join(" "),
-  };
-}
-
-/**
  * Tool principal del agente Pulso: consulta datos ERP vía isg-api-pulso.
  * Parámetros validados contra GET /SPs_arquitectura (sys.parameters).
  */
@@ -222,6 +139,9 @@ export function buildEjecutarConsultaPulsoTool(
       "Excel solo si hay más de 50 filas (exportId). No ofrezcas Excel en consultas chicas.",
     ].join(" "),
     inputSchema: ejecutarConsultaPulsoSchema,
+    // Resumen limpio al LLM; la UI sigue recibiendo el output completo de execute.
+    toModelOutput: ({ output }: { output: unknown }) =>
+      toEjecutarConsultaModelOutput(output),
     execute: async ({ nombreSp, parametros, modoResultado }) => {
       const started = Date.now();
       const raw = normalizeToolParametros(parametros);
@@ -315,13 +235,15 @@ export function buildEjecutarConsultaPulsoTool(
 
       try {
         const limiteFilas = resolveLimiteFilas(modoResultado);
+        const execTimeoutMs =
+          modoResultado === "completo" || limiteFilas == null ? 60_000 : 25_000;
         const result = await ejecutarSpPulso(
           {
             nombreSp,
             parametros: parametrosRecord,
             ...(limiteFilas != null ? { limiteFilas } : {}),
           },
-          { sessionToken, signal: AbortSignal.timeout(25_000) },
+          { sessionToken, signal: AbortSignal.timeout(execTimeoutMs) },
         );
         const ms = Date.now() - started;
         if (result.ok === false) {
@@ -344,73 +266,21 @@ export function buildEjecutarConsultaPulsoTool(
         }
 
         const size = resolveResultSize(result, { limiteFilas });
-        let { totalRows, truncated, rows, totalExact, atLeastRows } = size;
+        const { totalRows, truncated, rows, totalExact, atLeastRows } = size;
         const title = spUiTitle(catalogSp, nombreSp);
-        const optionalParamsUnused = listUnusedOptionalParams(
+        const optionalParamHints = listOptionalParamHints(
           nombreSp,
           parametrosRecord,
           catalog,
         );
+        const baseUi = {
+          nombreSp,
+          title,
+          warnings,
+          optionalParamHints,
+        };
 
-        // Resultado grande sin modo: traer el listado COMPLETO (total real + Excel).
-        // Evita el falso “51” del probe (limiteFilas) presentado como total.
-        if (shouldGateLargeResult(modoResultado, totalRows, truncated)) {
-          try {
-            const full = (await ejecutarSpPulso(
-              {
-                nombreSp,
-                parametros: parametrosRecord,
-              },
-              { sessionToken, signal: AbortSignal.timeout(25_000) },
-            )) as EjecutarSpResponse;
-            const fullMs = Date.now() - started;
-            if (full.ok !== false) {
-              const fullSize = resolveResultSize(full, { limiteFilas: null });
-              if (fullSize.rows.length > 0) {
-                logPulsoExec({
-                  nombreSp,
-                  ok: true,
-                  ms: fullMs,
-                  code: "EXCEL_EXPORT",
-                  paramsKeys,
-                  rows: fullSize.rows.length,
-                });
-                return buildFullListadoUiPayload({
-                  nombreSp,
-                  title,
-                  allRows: fullSize.rows,
-                  optionalParamsUnused,
-                  warnings,
-                });
-              }
-            }
-          } catch (fullError) {
-            console.warn(
-              `[pulso] full fetch after probe failed:`,
-              fullError instanceof Error ? fullError.message : fullError,
-            );
-          }
-
-          const gate = buildResultLargeGate({
-            nombreSp,
-            totalRows,
-            totalExact,
-            atLeastRows,
-            truncated,
-            optionalParamsUnused,
-          });
-          logPulsoExec({
-            nombreSp,
-            ok: false,
-            ms: Date.now() - started,
-            code: "RESULT_LARGE",
-            paramsKeys,
-            rows: totalExact ? totalRows : atLeastRows,
-          });
-          return gate;
-        }
-
-        // Listado completo pedido explícitamente.
+        // ── Completo: materializar todas las filas + Excel si >50 ────────────
         if (modoResultado === "completo") {
           if (!rows.length) {
             logPulsoExec({
@@ -427,105 +297,96 @@ export function buildEjecutarConsultaPulsoTool(
               nombreSp,
               totalRows: 0,
               avisoUsuario:
-                "No hubo filas para exportar. Decíselo al usuario en una frase simple.",
+                "No hubo filas para exportar. Decíselo al usuario en una frase simple de negocio.",
             };
           }
           logPulsoExec({
             nombreSp,
             ok: true,
             ms,
-            code: "EXCEL_EXPORT",
+            code:
+              rows.length > RESULT_LARGE_THRESHOLD
+                ? "EXCEL_EXPORT"
+                : "OK_SMALL",
             paramsKeys,
             rows: rows.length,
           });
-          return buildFullListadoUiPayload({
+          return buildCompleteListadoPayload({ ...baseUi, allRows: rows });
+        }
+
+        // ── Grande (1ª pasada / probe): adelanto + total si el API dio COUNT ─
+        // No reconsultar todo acá: el Excel completo va en modoResultado=completo.
+        if (shouldGateLargeResult(modoResultado, totalRows, truncated)) {
+          const previewRows = slicePreviewRows(rows, RESULT_LARGE_THRESHOLD);
+          logPulsoExec({
             nombreSp,
-            title,
-            allRows: rows,
-            optionalParamsUnused,
-            warnings,
+            ok: true,
+            ms,
+            code: totalExact ? "LARGE_PREVIEW_EXACT" : "LARGE_PREVIEW_UNCERTAIN",
+            paramsKeys,
+            rows: totalExact ? totalRows : previewRows.length,
+          });
+          return buildLargePreviewPayload({
+            ...baseUi,
+            previewRows,
+            size: { totalRows, totalExact, atLeastRows },
           });
         }
 
-        // preview50: solo adelanto en tabla; Excel SOLO si ya tenemos el total exacto
-        // de un fetch completo (no armar Excel con 50 filas etiquetado como “completo”).
-        const payloadRows =
-          modoResultado === "preview50"
-            ? rows.slice(0, RESULT_LARGE_THRESHOLD)
-            : rows;
+        // ── Preview50 explícito ──────────────────────────────────────────────
+        if (modoResultado === "preview50") {
+          const previewRows = rows.slice(0, RESULT_LARGE_THRESHOLD);
+          logPulsoExec({
+            nombreSp,
+            ok: true,
+            ms,
+            code: "PREVIEW50",
+            paramsKeys,
+            rows: totalExact ? totalRows : previewRows.length,
+          });
+          return buildLargePreviewPayload({
+            ...baseUi,
+            previewRows,
+            size: { totalRows, totalExact, atLeastRows },
+          });
+        }
 
+        // ── Resultado chico (≤50, no truncated) ──────────────────────────────
         logPulsoExec({
           nombreSp,
           ok: true,
           ms,
           paramsKeys,
-          rows: totalExact ? totalRows : atLeastRows,
+          rows: rows.length,
         });
 
-        if (!modoResultado && payloadRows.length > RESULT_LARGE_THRESHOLD) {
-          return buildResultLargeGate({
-            nombreSp,
-            totalRows: payloadRows.length,
-            totalExact: false,
-            atLeastRows: Math.max(atLeastRows, payloadRows.length),
-            truncated: true,
-            optionalParamsUnused,
-          });
+        if (rows.length <= RESULT_LARGE_THRESHOLD) {
+          return buildSmallListadoPayload({ ...baseUi, rows });
         }
 
-        const columnCount = countRowColumns(payloadRows);
-        const uiRows = slicePreviewRows(payloadRows, UI_PREVIEW_MAX_ROWS);
-        const wide = columnCount > WIDE_COLUMN_THRESHOLD;
-        const totalLabel = formatKnownTotalLabel({
-          totalExact,
-          totalRows,
-          atLeastRows,
-        });
-
-        // Excel SOLO si hay más de 50 filas (listado grande). Nunca por “tabla ancha”.
-        let exportId: string | undefined;
-        const exactTotalCount = totalExact ? totalRows : payloadRows.length;
-        if (
-          totalExact &&
-          !truncated &&
-          exactTotalCount > RESULT_LARGE_THRESHOLD
-        ) {
-          const spec = buildExcelSpecFromRows(payloadRows, title);
-          if (spec) exportId = storePulsoExcelExport(spec);
-        }
-
+        // Defensa: dataset grande sin flags de truncate del API.
+        const wide = countRowColumns(rows) > WIDE_COLUMN_THRESHOLD;
+        const uiRows = slicePreviewRows(rows, UI_PREVIEW_MAX_ROWS);
         return {
           ok: true,
           uiTable: true,
           nombreSp,
           rows: uiRows,
           previewRows: uiRows,
-          totalRows: totalExact ? totalRows : undefined,
-          totalExact,
-          atLeastRows,
+          totalRows: rows.length,
+          totalExact: true,
           mostrando: uiRows.length,
-          columnCount,
-          truncated:
-            truncated ||
-            payloadRows.length > uiRows.length ||
-            (totalExact && totalRows > uiRows.length),
-          ...(exportId ? { delivery: "excel" as const, exportId } : {}),
+          truncated: rows.length > uiRows.length,
+          columnCount: countRowColumns(rows),
           warnings: warnings.length ? warnings : undefined,
           avisoUsuario: [
             UI_TABLE_AVISO,
-            modoResultado === "preview50"
-              ? totalExact
-                ? `Existen ${totalRows} registros; la UI muestra las primeras ${uiRows.length}. NO digas que son todas.`
-                : `La UI muestra las primeras ${uiRows.length}. Hay ${totalLabel} registros; NO inventes un total exacto.`
-              : exactTotalCount <= RESULT_LARGE_THRESHOLD
-                ? `Hay ${exactTotalCount} registros; la tabla ya muestra todo.`
-                : "",
+            `Hay ${rows.length} registros; en pantalla ves un adelanto.`,
+            "Para Excel completo pedí modoResultado=completo.",
             wide
-              ? "Hay muchas columnas: la UI hace scroll horizontal."
+              ? "Hay muchas columnas: se puede desplazar la tabla en pantalla."
               : "",
-            exportId
-              ? "Hay botón Excel con el listado completo (>50 filas) en la UI; mencionálo."
-              : "NO ofrezcas ni menciones Excel: solo se ofrece cuando hay más de 50 registros.",
+            "NO listes filas. NO digas UI/HTML/tool.",
           ]
             .filter(Boolean)
             .join(" "),

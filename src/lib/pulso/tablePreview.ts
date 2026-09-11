@@ -1,4 +1,4 @@
-/** Helpers para preview UI de resultados tabulares (tool → MessageBubble). */
+/** Helpers para preview de resultados tabulares (tool → MessageBubble). */
 
 export const WIDE_COLUMN_THRESHOLD = 6;
 /** Adelanto en el chat: siempre resumen; el Excel lleva el total. */
@@ -29,7 +29,8 @@ export function slicePreviewRows(
   return asObjectRows(rows).slice(0, maxRows);
 }
 
+/** Instrucción interna para el modelo (no repetir jerga al usuario). */
 export const UI_TABLE_AVISO =
-  "La UI del chat ya muestra una tabla HTML con el preview. " +
-  "NO armes ninguna tabla markdown (rompe el formato con muchas columnas). " +
-  "Respondé solo con 1–3 frases de contexto y, si aplica, ofrecé Excel/completo o filtros.";
+  "En pantalla ya hay una tabla con el adelanto. " +
+  "NO armes listas ni tablas en el texto. " +
+  "Respondé 1–3 frases en lenguaje de negocio (sin decir UI, HTML, tool ni API).";

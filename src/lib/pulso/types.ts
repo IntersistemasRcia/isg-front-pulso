@@ -52,11 +52,16 @@ export interface EjecutarSpResponse {
   message?: string;
   data?: unknown;
   rows?: unknown[];
-  /** Total de filas del resultado (o leídas). */
+  /** Total de filas del resultado (COUNT real preferido). */
   totalRows?: number;
   /** true si se aplicó límite y había más filas. */
   truncated?: boolean;
   limiteFilas?: number | null;
+  /**
+   * true = totalRows es COUNT real; false = solo tamaño del lote.
+   * Si omitido, el front infiere (totalRows > lote ⇒ exacto).
+   */
+  totalRowsExact?: boolean;
   request?: EjecutarSpRequest;
   [key: string]: unknown;
 }
