@@ -84,11 +84,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(nextUser);
 
     // Catálogo SP fresco en LS; no bloquear login si Pulso API falla.
-    try {
-      await syncSpArquitecturaFromApi(data.token);
-    } catch {
+    // Background: no retrasar la navegación al dashboard.
+    void syncSpArquitecturaFromApi(data.token).catch(() => {
       // el chat reintenta al montar ChatPanel
-    }
+    });
   }, []);
 
   const logout = useCallback(() => {

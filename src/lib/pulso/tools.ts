@@ -372,7 +372,6 @@ export function buildEjecutarConsultaPulsoTool(
           uiTable: true,
           nombreSp,
           rows: uiRows,
-          previewRows: uiRows,
           totalRows: rows.length,
           totalExact: true,
           mostrando: uiRows.length,

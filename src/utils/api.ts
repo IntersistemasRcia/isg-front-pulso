@@ -25,10 +25,11 @@ export function getStoredToken(): string | null {
   return window.localStorage.getItem(TOKEN_STORAGE_KEY);
 }
 
-/** Persiste JWT en localStorage y cookie (para middleware). */
+/** Persiste JWT en localStorage y cookie (para middleware + requireAuth). */
 export function storeToken(token: string, maxAgeSeconds = 60 * 60 * 8): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  // encodeURIComponent: JWT puede traer caracteres que rompen el parseo de cookies.
   document.cookie = `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
 }
 
@@ -65,9 +66,17 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ message?: string }>) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
-      clearAuthStorage();
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login";
+      const url = String(error.config?.url ?? "");
+      // No limpiar sesión ante fallo del propio login.
+      if (url.includes("/api/auth/login")) {
+        return Promise.reject(error);
+      }
+      // Solo invalidar si realmente había sesión (evita wipe por race sin Bearer).
+      if (getStoredToken()) {
+        clearAuthStorage();
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login";
+        }
       }
     }
     return Promise.reject(error);

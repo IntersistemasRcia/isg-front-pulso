@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import {
+  decodeAuthCookieValue,
   extractBearerToken,
   mapPayloadToUser,
   verifyAuthToken,
@@ -14,7 +15,9 @@ export type AuthResult =
 /** Valida JWT desde cookie o Authorization Bearer. */
 export async function requireAuth(request: NextRequest): Promise<AuthResult> {
   const authHeader = request.headers.get("authorization");
-  const cookieToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  const cookieToken = decodeAuthCookieValue(
+    request.cookies.get(AUTH_COOKIE_NAME)?.value,
+  );
   const token = extractBearerToken(authHeader) ?? cookieToken ?? null;
 
   if (!token) {

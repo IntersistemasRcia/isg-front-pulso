@@ -148,13 +148,16 @@ Fuente en backend (`EjecutorController.cs`, clase `PeticionSpDto`):
   "rows": [ ... ],
   "totalRows": 183,
   "truncated": true,
-  "limiteFilas": 50
+  "limiteFilas": 50,
+  "totalRowsExact": true
 }
 ```
 
 **Compat:** si el API aún devuelve un array crudo de filas, el front lo normaliza a `{ ok, rows, totalRows }`.
 
 **Body opcional:** `limiteFilas` — el API debería materializar como máximo N filas en la respuesta (el SP puede seguir corriendo entero en SQL Server).
+
+**Tokens (historial):** el front compacta tool outputs de turnos previos y reaplica `toModelOutput` al convertir a mensajes del modelo (`convertToModelMessages` + tools), para no reenviar `rows` al LLM.
 
 **Errores:** `{ "error": "...", "detalle": "..." }` con HTTP 400/500.
 
