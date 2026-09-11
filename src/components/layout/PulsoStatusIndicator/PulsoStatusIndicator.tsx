@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { authFetch } from "@/utils/api";
 import styles from "./PulsoStatusIndicator.module.css";
 
 type PulsoStatusPayload = {
@@ -27,9 +28,9 @@ export function PulsoStatusIndicator() {
   const load = useCallback(async (sessionToken: string) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/pulso/status", {
-        headers: { Authorization: `Bearer ${sessionToken}` },
-        cache: "no-store",
+      const res = await authFetch("/api/pulso/status", {
+        token: sessionToken,
+        authRetries: 2,
       });
       const json = (await res.json()) as PulsoStatusPayload;
       setData(json);

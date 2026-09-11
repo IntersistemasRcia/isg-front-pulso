@@ -88,7 +88,16 @@ export function ChatPanel() {
         },
         body: { modelId },
         fetch: async (input, init) => {
-          const response = await fetch(input, init);
+          const token = authToken ?? getStoredToken();
+          const headers = new Headers(init?.headers);
+          if (token && !headers.has("Authorization")) {
+            headers.set("Authorization", `Bearer ${token}`);
+          }
+          const response = await fetch(input, {
+            ...init,
+            headers,
+            credentials: "same-origin",
+          });
           if (readDebugEnabled()) {
             const info = parsePulsoChatDebugHeaders(response.headers);
             if (info) debugInfoRef.current(info);

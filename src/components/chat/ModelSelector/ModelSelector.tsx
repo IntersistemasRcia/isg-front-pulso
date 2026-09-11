@@ -8,6 +8,7 @@ import type {
   ProviderAvailability,
 } from "@/lib/llm/types";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { authFetch } from "@/utils/api";
 import { translateErrorMessage } from "@/utils/userFacingErrors";
 import styles from "./ModelSelector.module.css";
 
@@ -41,9 +42,9 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/chat/providers", {
-          headers: { Authorization: `Bearer ${sessionToken}` },
-          cache: "no-store",
+        const res = await authFetch("/api/chat/providers", {
+          token: sessionToken,
+          authRetries: 2,
         });
         if (!res.ok) {
           throw new Error("No se pudo cargar la lista de modelos");

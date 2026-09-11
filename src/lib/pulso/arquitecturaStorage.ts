@@ -1,5 +1,6 @@
 import type { SpArquitectura, SpParametroArquitectura } from "@/lib/pulso/types";
 import { getSpNombre, getSpParametros } from "@/lib/pulso/catalog";
+import { authFetch } from "@/utils/api";
 
 /** localStorage: catálogo slim + descripcion Pulso (v3). */
 export const SP_ARQUITECTURA_STORAGE_KEY = "pulso.sp.arquitectura.v3";
@@ -70,8 +71,9 @@ export function clearSpArquitecturaStorage(): void {
 
 /** Sincroniza SPs_arquitectura vía proxy Next.js y persiste en localStorage. */
 export async function syncSpArquitecturaFromApi(token: string): Promise<SpArquitecturaStored | null> {
-  const response = await fetch("/api/pulso/arquitectura", {
-    headers: { Authorization: `Bearer ${token}` },
+  const response = await authFetch("/api/pulso/arquitectura", {
+    token,
+    authRetries: 2,
   });
   if (!response.ok) return null;
   const data = (await response.json()) as SpArquitecturaStored;

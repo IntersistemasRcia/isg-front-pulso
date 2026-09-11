@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         title: err.title,
         message: err.message,
       } satisfies PulsoStatusResponse,
-      { status: 200 },
+      { status: 401 },
     );
   }
 

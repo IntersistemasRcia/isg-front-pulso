@@ -32,7 +32,8 @@ export default function LoginPage() {
     try {
       await login({ username: username.trim(), password });
       hardNavigatingRef.current = true;
-      // Hard navigation: asegura cookie + LS visibles para middleware y /api/*
+      // Deja que el browser asiente la cookie HttpOnly del Set-Cookie del login.
+      await new Promise((r) => window.setTimeout(r, 50));
       window.location.assign("/dashboard");
     } catch (err) {
       const message =

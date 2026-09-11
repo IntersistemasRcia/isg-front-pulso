@@ -3,6 +3,7 @@ import {
   decodeAuthCookieValue,
   extractBearerToken,
   mapPayloadToUser,
+  normalizeAuthToken,
   verifyAuthToken,
 } from "@/utils/auth";
 import { AUTH_COOKIE_NAME } from "@/utils/constants";
@@ -18,7 +19,8 @@ export async function requireAuth(request: NextRequest): Promise<AuthResult> {
   const cookieToken = decodeAuthCookieValue(
     request.cookies.get(AUTH_COOKIE_NAME)?.value,
   );
-  const token = extractBearerToken(authHeader) ?? cookieToken ?? null;
+  const rawToken = extractBearerToken(authHeader) ?? cookieToken ?? null;
+  const token = rawToken ? normalizeAuthToken(rawToken) : null;
 
   if (!token) {
     return {
