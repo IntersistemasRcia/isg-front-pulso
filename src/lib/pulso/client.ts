@@ -113,6 +113,7 @@ export async function ejecutarSpPulso(
   const payload = toPulsoEjecutarSpBody({
     nombreSp: body.nombreSp,
     parametros: body.parametros,
+    limiteFilas: body.limiteFilas,
   });
 
   if (process.env.NODE_ENV !== "production") {
@@ -138,17 +139,46 @@ export async function ejecutarSpPulso(
     };
   }
 
-  // La API devuelve IEnumerable<dynamic> → array JSON de filas
+  // Compat: API vieja → array crudo de filas
   if (Array.isArray(raw)) {
     return {
       ok: true,
       rows: raw,
       data: raw,
+      totalRows: raw.length,
+      truncated: false,
+      limiteFilas: body.limiteFilas ?? null,
+    };
+  }
+
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as EjecutarSpResponse;
+    const rows = Array.isArray(obj.rows)
+      ? obj.rows
+      : Array.isArray(obj.data)
+        ? (obj.data as unknown[])
+        : undefined;
+    const totalRows =
+      typeof obj.totalRows === "number"
+        ? obj.totalRows
+        : rows
+          ? rows.length
+          : undefined;
+    return {
+      ok: obj.ok !== false,
+      ...obj,
+      rows: rows ?? obj.rows,
+      data: rows ?? obj.data ?? raw,
+      totalRows,
+      truncated: Boolean(obj.truncated),
+      limiteFilas: obj.limiteFilas ?? body.limiteFilas ?? null,
     };
   }
 
   return {
     ok: true,
-    ...(typeof raw === "object" && raw !== null ? (raw as EjecutarSpResponse) : {}),
+    data: raw,
+    totalRows: 0,
+    truncated: false,
   };
 }

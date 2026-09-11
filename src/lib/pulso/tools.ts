@@ -7,6 +7,15 @@ import { formatSpParamHint } from "@/lib/pulso/spParamResolver";
 import type { SpArquitectura } from "@/lib/pulso/types";
 import { truncateToolResult, type TruncateToolResultOptions } from "@/lib/chat/truncateToolResult";
 import { coerceParamsForSp } from "@/lib/pulso/spParamResolver";
+import {
+  RESULT_LARGE_PROBE_LIMIT,
+  RESULT_LARGE_THRESHOLD,
+  buildResultLargeGate,
+  listUnusedOptionalParams,
+  resolveResultSize,
+  shouldGateLargeResult,
+  type ModoResultado,
+} from "@/lib/pulso/resultSizeGate";
 
 const parametroItemSchema = z.object({
   nombre: z
@@ -33,6 +42,12 @@ const ejecutarConsultaPulsoSchema = z.object({
     .describe(
       "Lista de parámetros del SP. Usá los nombres exactos del catálogo (DesdeFecha, HastaFecha, etc.).",
     ),
+  modoResultado: z
+    .enum(["preview50", "completo"])
+    .optional()
+    .describe(
+      "Tras RESULT_LARGE: preview50 = primeros 50; completo = todos los registros. Omitir en la primera ejecución.",
+    ),
 });
 
 /** Convierte lista {nombre, valor} del LLM a Record (sin renombrar; coerceParamsForSp alinea al catálogo). */
@@ -53,10 +68,16 @@ function paramsKeysOf(record: Record<string, unknown>): string {
 }
 
 function countResultRows(result: Record<string, unknown>): number | undefined {
+  if (typeof result.totalRows === "number") return result.totalRows;
   if (Array.isArray(result.rows)) return result.rows.length;
   if (Array.isArray(result.data)) return result.data.length;
-  if (typeof result.totalRows === "number") return result.totalRows;
   return undefined;
+}
+
+function resolveLimiteFilas(modo: ModoResultado | undefined): number | undefined {
+  if (modo === "completo") return undefined;
+  if (modo === "preview50") return RESULT_LARGE_THRESHOLD;
+  return RESULT_LARGE_PROBE_LIMIT;
 }
 
 /** Log compacto siempre (PM2 / production). Sin filas ni valores de params. */
@@ -100,9 +121,10 @@ export function buildEjecutarConsultaPulsoTool(
       "Usá solo parámetros de entrada del catálogo. Si el usuario dio fechas o período (ej. «junio»), calculá FechaDesde/FechaHasta con el año actual si falta y ejecutá ANTES de responder.",
       "Nunca respondas «no hay ventas», «no encontré datos» o «no se pudo acceder» sin haber ejecutado esta tool. Si no hay match exacto, ofrecé 1–2 alternativas de negocio cercanas y pedí confirmar; no inventes fallos de acceso.",
       "Si faltan inputs requeridos del catálogo que el usuario no dio, no inventes valores: el runtime devolverá MISSING_REQUIRED_PARAMS y debés pedir el dato de negocio.",
+      "Si devuelve RESULT_LARGE (>50 filas), preguntá al usuario (filtros / primeros 50 / completo) y reejecutá con modoResultado o con filtros; no inventes la tabla.",
     ].join(" "),
     inputSchema: ejecutarConsultaPulsoSchema,
-    execute: async ({ nombreSp, parametros }) => {
+    execute: async ({ nombreSp, parametros, modoResultado }) => {
       const started = Date.now();
       const raw = normalizeToolParametros(parametros);
       const {
@@ -194,8 +216,13 @@ export function buildEjecutarConsultaPulsoTool(
       }
 
       try {
+        const limiteFilas = resolveLimiteFilas(modoResultado);
         const result = await ejecutarSpPulso(
-          { nombreSp, parametros: parametrosRecord },
+          {
+            nombreSp,
+            parametros: parametrosRecord,
+            ...(limiteFilas != null ? { limiteFilas } : {}),
+          },
           { sessionToken, signal: AbortSignal.timeout(25_000) },
         );
         const ms = Date.now() - started;
@@ -217,19 +244,66 @@ export function buildEjecutarConsultaPulsoTool(
               "Explicá el problema en una frase simple al usuario (sin jerga técnica) y ofrecé reintentar o ajustar la búsqueda.",
           }, truncateOptions);
         }
-        const okResult = result as Record<string, unknown>;
+
+        const { totalRows, truncated, rows } = resolveResultSize(result);
+
+        if (shouldGateLargeResult(modoResultado, totalRows, truncated)) {
+          const optionalParamsUnused = listUnusedOptionalParams(
+            nombreSp,
+            parametrosRecord,
+            catalog,
+          );
+          const gate = buildResultLargeGate({
+            nombreSp,
+            totalRows,
+            truncated,
+            optionalParamsUnused,
+          });
+          logPulsoExec({
+            nombreSp,
+            ok: false,
+            ms,
+            code: "RESULT_LARGE",
+            paramsKeys,
+            rows: totalRows,
+          });
+          return gate;
+        }
+
+        const previewNote =
+          modoResultado === "preview50"
+            ? {
+                mostrando: Math.min(rows.length, RESULT_LARGE_THRESHOLD),
+                totalRows,
+                truncated: totalRows > RESULT_LARGE_THRESHOLD || truncated,
+                nota: `Mostrando los primeros ${RESULT_LARGE_THRESHOLD} de ${totalRows} registros.`,
+              }
+            : undefined;
+
+        const payloadRows =
+          modoResultado === "preview50"
+            ? rows.slice(0, RESULT_LARGE_THRESHOLD)
+            : rows;
+
         logPulsoExec({
           nombreSp,
           ok: true,
           ms,
           paramsKeys,
-          rows: countResultRows(okResult),
+          rows: totalRows,
         });
-        return truncateToolResult({
-          ...result,
-          nombreSp,
-          warnings: warnings.length ? warnings : undefined,
-        }, truncateOptions);
+        return truncateToolResult(
+          {
+            ok: true,
+            nombreSp,
+            rows: payloadRows,
+            totalRows,
+            truncated: Boolean(previewNote?.truncated),
+            ...previewNote,
+            warnings: warnings.length ? warnings : undefined,
+          },
+          truncateOptions,
+        );
       } catch (error) {
         const message =
           error instanceof Error
