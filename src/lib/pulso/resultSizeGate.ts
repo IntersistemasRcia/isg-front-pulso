@@ -1,11 +1,15 @@
 import { getSpNombre, getSpParametros } from "@/lib/pulso/catalog";
 import type { EjecutarSpResponse, SpArquitectura } from "@/lib/pulso/types";
 
-/** Umbral de negocio: más de esto → preview 50 + Excel total / filtros. */
+/** Umbral de negocio: más de esto → adelanto + opción Excel completo. */
 export const RESULT_LARGE_THRESHOLD = 50;
 
-/** Probe: pedimos threshold+1 para detectar overflow sin traer cientos de filas. */
-export const RESULT_LARGE_PROBE_LIMIT = RESULT_LARGE_THRESHOLD + 1;
+/**
+ * Probe inicial: pedimos exactamente el umbral.
+ * Con backend que envía totalRowsExact + COUNT real, alcanza para saber el total
+ * sin traer N+1 ni reconsultar todo el listado.
+ */
+export const RESULT_LARGE_PROBE_LIMIT = RESULT_LARGE_THRESHOLD;
 
 export type ModoResultado = "preview50" | "completo";
 
@@ -14,11 +18,11 @@ export type ResolvedResultSize = {
   truncated: boolean;
   rows: unknown[];
   /**
-   * false cuando el backend solo devolvió el tamaño del lote (p.ej. 51)
-   * y no el COUNT real. Nunca presentar ese número como total exacto.
+   * true solo si el total es confiable (COUNT real o resultado completo sin corte).
+   * false cuando totalRows es solo el tamaño del lote (legacy / probe sin COUNT).
    */
   totalExact: boolean;
-  /** Mínimo conocido cuando totalExact=false (p.ej. “más de 50”). */
+  /** Mínimo conocido cuando totalExact=false. */
   atLeastRows: number;
 };
 
@@ -70,6 +74,15 @@ function humanizeParamName(nombre: string): string {
     .toLowerCase();
 }
 
+/** Hints de negocio para params opcionales no usados (reutilizado en payloads UI). */
+export function listOptionalParamHints(
+  nombreSp: string,
+  sent: Record<string, unknown>,
+  catalog: SpArquitectura[],
+): string[] {
+  return listUnusedOptionalParams(nombreSp, sent, catalog).map(humanizeParamName);
+}
+
 /** Params opcionales del catálogo que el usuario/LLM no envió. */
 export function listUnusedOptionalParams(
   nombreSp: string,
@@ -99,9 +112,12 @@ export function listUnusedOptionalParams(
 }
 
 /**
- * Interpreta tamaño del resultado.
- * Si truncated y totalRows ≈ tamaño del lote/probe, el total NO es exacto
- * (el API a menudo reporta 51 = limiteFilas, no el COUNT real).
+ * Interpreta tamaño del resultado según el contrato del API.
+ *
+ * totalExact:
+ * - `totalRowsExact === true|false` del backend (preferido)
+ * - si no viene: exacto si no truncó, o si totalRows > tamaño del lote/límite
+ * - NUNCA exacto si truncated y totalRows ≤ limiteFilas (artifact tipo “51”)
  */
 export function resolveResultSize(
   result: EjecutarSpResponse,
@@ -125,34 +141,54 @@ export function resolveResultSize(
   const truncated =
     truncatedFlag || hitLimit || reportedTotal > RESULT_LARGE_THRESHOLD;
 
-  // Total exacto solo si no cortamos, o el backend dio un COUNT > tamaño del lote.
   const batchSize = Math.max(rows.length, limiteFilas ?? 0);
-  const totalExact =
-    !truncated ||
-    (typeof result.totalRows === "number" &&
-      result.totalRows > batchSize &&
-      !(limiteFilas != null && result.totalRows <= limiteFilas));
+  let totalExact: boolean;
+  if (typeof result.totalRowsExact === "boolean") {
+    totalExact = result.totalRowsExact;
+  } else if (!truncated) {
+    totalExact = true;
+  } else if (
+    typeof result.totalRows === "number" &&
+    result.totalRows > batchSize
+  ) {
+    // COUNT real típico: truncated + totalRows > filas devueltas / límite.
+    totalExact = true;
+  } else {
+    totalExact = false;
+  }
 
-  const totalRows = totalExact ? reportedTotal : reportedTotal;
+  // Defensa: nunca marcar exacto un total que es solo el tope del lote.
+  if (
+    truncated &&
+    limiteFilas != null &&
+    reportedTotal <= limiteFilas &&
+    result.totalRowsExact !== true
+  ) {
+    totalExact = false;
+  }
+
+  const totalRows = reportedTotal;
   const atLeastRows = truncated
     ? Math.max(
         RESULT_LARGE_THRESHOLD + 1,
         rows.length,
-        totalExact ? reportedTotal : Math.min(reportedTotal, batchSize),
+        totalExact ? reportedTotal : Math.min(reportedTotal, batchSize || reportedTotal),
       )
     : totalRows;
 
   return { totalRows, truncated, rows, totalExact, atLeastRows };
 }
 
-export function formatKnownTotalLabel(size: Pick<ResolvedResultSize, "totalExact" | "totalRows" | "atLeastRows">): string {
+export function formatKnownTotalLabel(
+  size: Pick<ResolvedResultSize, "totalExact" | "totalRows" | "atLeastRows">,
+): string {
   if (size.totalExact) return String(size.totalRows);
   return `más de ${RESULT_LARGE_THRESHOLD}`;
 }
 
 /**
- * Si el resultado supera el umbral y no hay modo confirmado, arma el gate RESULT_LARGE.
- * No inventar totales (evitar “51” del probe).
+ * Gate sin filas (poco usado): cuando no queremos adelanto todavía.
+ * Preferimos buildLargePreviewPayload en tools.
  */
 export function buildResultLargeGate(options: {
   nombreSp: string;
@@ -182,25 +218,23 @@ export function buildResultLargeGate(options: {
 
   const avisoUsuario = hasFilters
     ? [
-        `La consulta tiene ${totalLabel} registros` +
-          (totalExact ? "" : " (el total exacto se confirma al pedir el listado completo).") +
+        `Hay ${totalLabel} registros` +
+          (totalExact ? "" : " (sin COUNT exacto; no digas 51).") +
           ".",
-        "NO muestres tabla markdown. NO digas un total inventado (p.ej. 51 del probe).",
-        `Ofrecé en lenguaje de negocio: (1) filtrar por ${hints.join(", ")} (nombre o parcial),`,
-        `(2) ver solo los primeros ${RESULT_LARGE_THRESHOLD} en el chat, o (3) Excel con TODOS los registros.`,
-        "Si elige primeros 50 → modoResultado=preview50.",
-        "Si elige completo / todos / Excel → modoResultado=completo (Excel con el total real; la UI muestra adelanto de 50).",
+        "NO listes filas ni armes tablas en el texto.",
+        `Ofrecé: (1) filtrar por ${hints.join(", ")} (nombre o parcial),`,
+        `(2) ver un adelanto de ${RESULT_LARGE_THRESHOLD} en pantalla, o (3) Excel con TODAS.`,
+        "adelanto → modoResultado=preview50; completo/Excel → modoResultado=completo.",
         "Si aporta un filtro → reejecutá con ese parámetro (sin modoResultado).",
-        "No menciones SP, SQL ni nombres técnicos crudos de parámetros.",
+        "Nunca digas UI, HTML, tool, API ni SP.",
       ].join(" ")
     : [
-        `La consulta tiene ${totalLabel} registros` +
-          (totalExact ? "" : " (el total exacto se confirma al pedir el listado completo).") +
+        `Hay ${totalLabel} registros` +
+          (totalExact ? "" : " (sin COUNT exacto; no digas 51).") +
           ".",
-        "NO muestres tabla markdown. NO digas un total inventado.",
-        `Preguntá si desea ver los primeros ${RESULT_LARGE_THRESHOLD} en el chat o descargar Excel con el listado completo.`,
-        "primeros 50 → modoResultado=preview50; completo/Excel → modoResultado=completo.",
-        "No menciones SP, SQL ni nombres técnicos crudos.",
+        "NO listes filas. Preguntá si quiere un adelanto de 50 o el Excel con todas.",
+        "adelanto → modoResultado=preview50; completo/Excel → modoResultado=completo.",
+        "Nunca digas UI, HTML, tool, API ni SP.",
       ].join(" ");
 
   return {
@@ -219,7 +253,6 @@ export function buildResultLargeGate(options: {
   };
 }
 
-/** ¿Hay que preguntar al usuario antes de devolver filas al LLM? */
 export function shouldGateLargeResult(
   modoResultado: ModoResultado | undefined,
   totalRows: number,

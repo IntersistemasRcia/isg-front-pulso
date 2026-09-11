@@ -172,6 +172,9 @@ export async function ejecutarSpPulso(
       totalRows,
       truncated: Boolean(obj.truncated),
       limiteFilas: obj.limiteFilas ?? body.limiteFilas ?? null,
+      ...(typeof obj.totalRowsExact === "boolean"
+        ? { totalRowsExact: obj.totalRowsExact }
+        : {}),
     };
   }
 
