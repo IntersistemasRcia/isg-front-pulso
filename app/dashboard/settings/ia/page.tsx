@@ -6,6 +6,7 @@ import { MyButtons } from "@/utils/MyButtons";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { BYOK_PROVIDERS } from "@/lib/llm/registry";
 import type { ByokProviderId, ByokSettingsDto } from "@/lib/llm/types";
+import { authFetch } from "@/utils/api";
 import styles from "./page.module.css";
 
 type SettingsResponse = ByokSettingsDto & {
@@ -27,21 +28,15 @@ export default function IaSettingsPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const authHeaders = useCallback((): HeadersInit => {
-    return {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-  }, [token]);
-
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/settings/ia", {
-        headers: authHeaders(),
-        cache: "no-store",
+      const res = await authFetch("/api/settings/ia", {
+        token,
+        authRetries: 2,
+        headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) {
         throw new Error("No se pudo cargar la configuración");
@@ -53,7 +48,7 @@ export default function IaSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, authHeaders]);
+  }, [token]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -75,9 +70,10 @@ export default function IaSettingsPage() {
     setError(null);
     setFeedback(null);
     try {
-      const res = await fetch("/api/settings/ia", {
+      const res = await authFetch("/api/settings/ia", {
         method: "POST",
-        headers: authHeaders(),
+        token,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, apiKey }),
       });
       const data = (await res.json()) as SettingsResponse & { message?: string };
@@ -99,9 +95,10 @@ export default function IaSettingsPage() {
     setError(null);
     setFeedback(null);
     try {
-      const res = await fetch("/api/settings/ia", {
+      const res = await authFetch("/api/settings/ia", {
         method: "DELETE",
-        headers: authHeaders(),
+        token,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider }),
       });
       const data = (await res.json()) as SettingsResponse & { message?: string };

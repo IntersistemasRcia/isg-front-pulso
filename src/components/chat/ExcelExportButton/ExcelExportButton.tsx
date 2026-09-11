@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui";
-import { getStoredToken } from "@/utils/api";
+import { authFetch, getStoredToken } from "@/utils/api";
 import styles from "@/components/chat/ExcelDownload/ExcelDownload.module.css";
 
 export type ExcelExportButtonProps = {
@@ -32,9 +32,9 @@ export function ExcelExportButton({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/pulso/export/${encodeURIComponent(exportId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
+      const res = await authFetch(`/api/pulso/export/${encodeURIComponent(exportId)}`, {
+        token,
+        authRetries: 1,
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { message?: string } | null;

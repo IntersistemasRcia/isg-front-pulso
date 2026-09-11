@@ -4,6 +4,7 @@ import {
   TOKEN_STORAGE_KEY,
   USER_STORAGE_KEY,
 } from "@/utils/constants";
+import { normalizeAuthToken } from "@/utils/auth";
 
 /** Base URL relativa o configurada por instancia on-premise. */
 const baseURL =
@@ -17,28 +18,51 @@ export const api = axios.create({
     "Content-Type": "application/json",
   },
   timeout: 60_000,
+  withCredentials: true,
 });
 
 /** Lee el JWT desde localStorage (fallback cliente). */
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  const raw = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!raw) return null;
+  const normalized = normalizeAuthToken(raw);
+  return normalized || null;
 }
 
-/** Persiste JWT en localStorage y cookie (para middleware + requireAuth). */
-export function storeToken(token: string, maxAgeSeconds = 60 * 60 * 8): void {
+/**
+ * Persiste JWT en localStorage.
+ * La cookie de sesión la setea el server (HttpOnly) en POST /api/auth/login.
+ * Se limpia cualquier cookie no-HttpOnly legada que pudiera corromper el JWT (+ → espacio).
+ */
+export function storeToken(token: string): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  // encodeURIComponent: JWT puede traer caracteres que rompen el parseo de cookies.
-  document.cookie = `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
+  const normalized = normalizeAuthToken(token);
+  window.localStorage.setItem(TOKEN_STORAGE_KEY, normalized);
+  // Evita cookie client-side vieja compitiendo con la HttpOnly del login.
+  document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
 }
 
-/** Elimina token y datos de sesión. */
+/** Elimina token y datos de sesión en el cliente. */
 export function clearAuthStorage(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(TOKEN_STORAGE_KEY);
   window.localStorage.removeItem(USER_STORAGE_KEY);
   document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+/** Invalida la cookie HttpOnly de sesión en el servidor. */
+export async function clearAuthCookie(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    // ignore network errors on logout
+  }
 }
 
 export function getStoredUserJson(): string | null {
@@ -49,6 +73,46 @@ export function getStoredUserJson(): string | null {
 export function storeUserJson(userJson: string): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(USER_STORAGE_KEY, userJson);
+}
+
+export type AuthFetchInit = RequestInit & {
+  /** JWT explícito; si omite, usa localStorage. */
+  token?: string | null;
+  /** Reintentos ante 401 (carrera post-login). Default 1. */
+  authRetries?: number;
+};
+
+/**
+ * fetch autenticado: Bearer + credentials + un reintento ante 401.
+ */
+export async function authFetch(
+  input: RequestInfo | URL,
+  init: AuthFetchInit = {},
+): Promise<Response> {
+  const { token: tokenOpt, authRetries = 1, ...rest } = init;
+  const token = (tokenOpt ?? getStoredToken()) || null;
+
+  const headers = new Headers(rest.headers);
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const execute = () =>
+    fetch(input, {
+      ...rest,
+      headers,
+      credentials: rest.credentials ?? "same-origin",
+      cache: rest.cache ?? "no-store",
+    });
+
+  let response = await execute();
+  let left = authRetries;
+  while (response.status === 401 && token && left > 0) {
+    left -= 1;
+    await new Promise((r) => setTimeout(r, 200));
+    response = await execute();
+  }
+  return response;
 }
 
 /**
@@ -74,6 +138,7 @@ api.interceptors.response.use(
       // Solo invalidar si realmente había sesión (evita wipe por race sin Bearer).
       if (getStoredToken()) {
         clearAuthStorage();
+        void clearAuthCookie();
         if (!window.location.pathname.startsWith("/login")) {
           window.location.href = "/login";
         }

@@ -4,16 +4,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { LoginCredentials, User } from "@/types";
 import {
   api,
+  clearAuthCookie,
   clearAuthStorage,
   getStoredToken,
   getStoredUserJson,
   storeToken,
   storeUserJson,
 } from "@/utils/api";
-import { isTokenExpired, mapPayloadToUser } from "@/utils/auth";
+import { isTokenExpired, mapPayloadToUser, normalizeAuthToken } from "@/utils/auth";
 import {
   clearSpArquitecturaStorage,
-  syncSpArquitecturaFromApi,
 } from "@/lib/pulso/arquitecturaStorage";
 import { decodeJwt } from "jose";
 
@@ -73,21 +73,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error("La API Auth no devolvió un token");
     }
 
-    if (isTokenExpired(data.token)) {
+    const accessToken = normalizeAuthToken(data.token);
+    if (!accessToken) {
+      throw new Error("La API Auth devolvió un token vacío");
+    }
+
+    if (isTokenExpired(accessToken)) {
       throw new Error("El token recibido ya está expirado");
     }
 
-    const nextUser = hydrateUserFromToken(data.token, data.user);
-    storeToken(data.token);
+    const nextUser = hydrateUserFromToken(accessToken, data.user);
+    storeToken(accessToken);
     storeUserJson(JSON.stringify(nextUser));
-    setToken(data.token);
+    setToken(accessToken);
     setUser(nextUser);
-
-    // Catálogo SP fresco en LS; no bloquear login si Pulso API falla.
-    // Background: no retrasar la navegación al dashboard.
-    void syncSpArquitecturaFromApi(data.token).catch(() => {
-      // el chat reintenta al montar ChatPanel
-    });
+    // Catálogo SP: se sincroniza al montar el dashboard (evita 401 en carrera post-login).
   }, []);
 
   const logout = useCallback(() => {
@@ -95,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearSpArquitecturaStorage();
     setToken(null);
     setUser(null);
+    void clearAuthCookie();
   }, []);
 
   const value = useMemo<AuthContextValue>(
