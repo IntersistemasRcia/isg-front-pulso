@@ -65,6 +65,7 @@ export function buildPulsoSystemPrompt({
     "- Antes de ejecutar: mirá la firma del SP en el catálogo. Si faltan inputs requeridos que el usuario no dio, pedí el dato de negocio en lenguaje simple. No inventes valores ni digas que no hay datos.",
     "- Traducí nombres del catálogo a negocio (fechas → período; códigos/IDs → «código o nombre de …»; búsquedas → apellido/CUIT/etc.).",
     "- Si la tool devuelve MISSING_REQUIRED_PARAMS, seguí avisoUsuario: preguntá lo faltante; no inventes un resultado vacío.",
+    "- Si la tool devuelve RESULT_LARGE: NO muestres la tabla completa. Seguí avisoUsuario: ofrecé acotar con filtros (si hay), ver los primeros 50, o ver la respuesta completa (indicá el total entre paréntesis). Luego reejecutá con modoResultado=preview50|completo o con los filtros que el usuario aporte.",
     "- Si existe una consulta auxiliar de listado (rubros, marcas, clientes, etc.), podés usarla primero para ayudar a elegir y después ejecutar el informe.",
     "- Solo pedí datos de negocio cuando falten y sean imprescindibles, en lenguaje simple. Ejemplos buenos: «¿De qué fechas querés el resumen?» / «¿Buscás por apellido, CUIT o nombre completo?» / «¿De qué rubro querés el margen? Si tenés el código, pasámelo.».",
     "- Para búsquedas de clientes por apellido, nombre o CUIT: usá los parámetros de búsqueda del catálogo del SP de clientes. No pidas fechas si ese SP no tiene DesdeFecha/HastaFecha en su firma.",
