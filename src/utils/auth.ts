@@ -86,3 +86,15 @@ export function extractBearerToken(authorizationHeader: string | null): string |
   if (scheme?.toLowerCase() !== "bearer" || !token) return null;
   return token.trim();
 }
+
+/** Decodifica cookie JWT (el cliente la guarda con encodeURIComponent). */
+export function decodeAuthCookieValue(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    return decodeURIComponent(trimmed);
+  } catch {
+    return trimmed;
+  }
+}

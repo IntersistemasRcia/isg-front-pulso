@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, TextField } from "@/components/ui";
 import { MyButtons } from "@/utils/MyButtons";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { BYOK_PROVIDERS } from "@/lib/llm/registry";
 import type { ByokProviderId, ByokSettingsDto } from "@/lib/llm/types";
-import { getStoredToken } from "@/utils/api";
 import styles from "./page.module.css";
 
 type SettingsResponse = ByokSettingsDto & {
@@ -13,16 +13,9 @@ type SettingsResponse = ByokSettingsDto & {
   message?: string;
 };
 
-function authHeaders(): HeadersInit {
-  const token = getStoredToken();
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
 /** Configuración BYOK (Bring Your Own Key) para modelos premium. */
 export default function IaSettingsPage() {
+  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [draftKeys, setDraftKeys] = useState<Record<ByokProviderId, string>>({
     openai: "",
@@ -34,7 +27,15 @@ export default function IaSettingsPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const authHeaders = useCallback((): HeadersInit => {
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  }, [token]);
+
   const load = useCallback(async () => {
+    if (!token) return;
     setLoading(true);
     setError(null);
     try {
@@ -52,11 +53,17 @@ export default function IaSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [token, authHeaders]);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated || !token) {
+      setLoading(false);
+      setError("Iniciá sesión para configurar la IA.");
+      return;
+    }
     void load();
-  }, [load]);
+  }, [authLoading, isAuthenticated, token, load]);
 
   async function saveProvider(provider: ByokProviderId) {
     const apiKey = draftKeys[provider].trim();

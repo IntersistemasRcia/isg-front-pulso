@@ -12,19 +12,28 @@ function summarizeToolOutput(output: unknown): string {
     Array.isArray(obj.rows) ? obj.rows.length
     : Array.isArray(obj.data) ? obj.data.length
     : Array.isArray(obj.result) ? obj.result.length
+    : typeof obj.mostrando === "number" ? obj.mostrando
     : undefined;
 
-  const totalRows = typeof obj.totalRows === "number" ? obj.totalRows : rows;
+  const totalExact = obj.totalExact === true;
+  const totalRows =
+    typeof obj.totalRows === "number" ? obj.totalRows : rows;
   const truncated = Boolean(obj.truncated);
+  const hayExcel = obj.delivery === "excel" && typeof obj.exportId === "string";
 
-  if (totalRows != null) {
-    return truncated
-      ? `[ERP: ${totalRows} filas, resultado truncado en historial]`
-      : `[ERP: ${totalRows} filas]`;
+  if (obj.ok === false && obj.code === "RESULT_LARGE") {
+    return `[ERP: RESULT_LARGE — ${totalExact && totalRows != null ? `${totalRows} filas` : "más de 50"}]`;
   }
 
   if (obj.ok === false && obj.message) {
     return `[ERP: error — ${String(obj.message).slice(0, 100)}]`;
+  }
+
+  if (totalRows != null) {
+    const exactBit = totalExact ? "exacto" : "aprox";
+    const truncBit = truncated ? ", adelanto en historial" : "";
+    const excelBit = hayExcel ? ", excel" : "";
+    return `[ERP: ${totalRows} filas (${exactBit}${truncBit}${excelBit})]`;
   }
 
   return "[ERP: resultado omitido del historial para eficiencia]";
@@ -36,29 +45,16 @@ function clipAssistantText(text: string): string {
   return `${trimmed.slice(0, ASSISTANT_TEXT_MAX_CHARS)}… [respuesta recortada]`;
 }
 
-function shouldCompactHistory(definition?: ModelDefinition): boolean {
-  if (!definition) return false;
-  if (definition.provider === "openai-compatible") return true;
-  if (definition.promptMode === "tool-only") return true;
-  if (definition.maxInputTokens != null && definition.maxInputTokens <= 10_000) {
-    return true;
-  }
-  return false;
-}
-
 /**
- * Compacta historial para modelos con límite bajo (Groq ~8k TPM, LLM local):
- * - Tool outputs de turnos anteriores → resumen de 1 línea.
+ * Compacta historial para TODOS los modelos cloud/local:
+ * - Tool outputs de turnos anteriores al último user → resumen de 1 línea (sin filas).
  * - Texto de asistente anterior → recorte corto.
+ * El mensaje del último turno de usuario (y posteriores) se deja intacto para la UI/tools.
  */
 export function compactUiMessagesForModel(
   messages: UIMessage[],
-  definition?: ModelDefinition,
+  _definition?: ModelDefinition,
 ): UIMessage[] {
-  if (!shouldCompactHistory(definition)) {
-    return messages;
-  }
-
   let lastUserIndex = -1;
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i].role === "user") {

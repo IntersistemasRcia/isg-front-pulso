@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getStoredToken } from "@/utils/api";
+import { useAuth } from "@/components/providers/AuthProvider";
 import styles from "./PulsoStatusIndicator.module.css";
 
 type PulsoStatusPayload = {
@@ -17,18 +17,18 @@ const POLL_MS = 60_000;
 
 /**
  * Indicador de conectividad con isg-api-pulso (ERP).
- * Muestra estado simple y tooltip con detalle traducido.
+ * Espera token de AuthProvider antes de consultar (evita 401 post-login).
  */
 export function PulsoStatusIndicator() {
+  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
   const [data, setData] = useState<PulsoStatusPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (sessionToken: string) => {
     setLoading(true);
     try {
-      const token = getStoredToken();
       const res = await fetch("/api/pulso/status", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${sessionToken}` },
         cache: "no-store",
       });
       const json = (await res.json()) as PulsoStatusPayload;
@@ -45,13 +45,24 @@ export function PulsoStatusIndicator() {
   }, []);
 
   useEffect(() => {
-    void load();
-    const id = window.setInterval(() => void load(), POLL_MS);
+    if (authLoading) return;
+    if (!isAuthenticated || !token) {
+      setLoading(false);
+      setData({
+        status: "error",
+        title: "Sin sesión",
+        message: "Iniciá sesión para conectar el ERP.",
+      });
+      return;
+    }
+
+    void load(token);
+    const id = window.setInterval(() => void load(token), POLL_MS);
     return () => window.clearInterval(id);
-  }, [load]);
+  }, [authLoading, isAuthenticated, token, load]);
 
   const isOk = data?.status === "ok";
-  const label = loading
+  const label = loading || authLoading
     ? "Verificando ERP…"
     : data?.title ?? "ERP desconocido";
   const detail = data?.message ?? "Comprobando isg-api-pulso…";
@@ -60,14 +71,20 @@ export function PulsoStatusIndicator() {
     <button
       type="button"
       className={styles.wrap}
-      onClick={() => void load()}
+      onClick={() => {
+        if (token) void load(token);
+      }}
       title={detail}
       aria-label={`Estado ERP: ${label}. ${detail}`}
     >
       <span
         className={[
           styles.dot,
-          loading ? styles.dotLoading : isOk ? styles.dotOk : styles.dotError,
+          loading || authLoading
+            ? styles.dotLoading
+            : isOk
+              ? styles.dotOk
+              : styles.dotError,
         ].join(" ")}
         aria-hidden
       />

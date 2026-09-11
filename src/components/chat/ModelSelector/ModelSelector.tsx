@@ -7,7 +7,7 @@ import type {
   LlmProvidersApiResponse,
   ProviderAvailability,
 } from "@/lib/llm/types";
-import { getStoredToken } from "@/utils/api";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { translateErrorMessage } from "@/utils/userFacingErrors";
 import styles from "./ModelSelector.module.css";
 
@@ -21,21 +21,28 @@ export interface ModelSelectorProps {
  * Selector de modelo LLM con grupos free/premium y enlace a configuración BYOK.
  */
 export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps) {
+  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
   const [models, setModels] = useState<ProviderAvailability[]>([]);
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated || !token) {
+      setLoading(false);
+      setModels([]);
+      return;
+    }
+
     let cancelled = false;
 
-    async function load() {
+    async function load(sessionToken: string) {
       setLoading(true);
       setError(null);
       try {
-        const token = getStoredToken();
         const res = await fetch("/api/chat/providers", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: { Authorization: `Bearer ${sessionToken}` },
           cache: "no-store",
         });
         if (!res.ok) {
@@ -60,11 +67,11 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
       }
     }
 
-    void load();
+    void load(token);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authLoading, isAuthenticated, token]);
 
   useEffect(() => {
     if (!models.length) return;

@@ -1,16 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { Card, TextField } from "@/components/ui";
 import { MyButtons } from "@/utils/MyButtons";
 import { useAuth } from "@/components/providers/AuthProvider";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
-  const router = useRouter();
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+  const hardNavigatingRef = useRef(false);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -18,10 +17,12 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (hardNavigatingRef.current) return;
     if (!authLoading && isAuthenticated) {
-      router.replace("/dashboard");
+      // Hard nav: cookie + LS listos para middleware y /api/* (evita 401 hasta F5).
+      window.location.replace("/dashboard");
     }
-  }, [authLoading, isAuthenticated, router]);
+  }, [authLoading, isAuthenticated]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,7 +31,9 @@ export default function LoginPage() {
 
     try {
       await login({ username: username.trim(), password });
-      router.replace("/dashboard");
+      hardNavigatingRef.current = true;
+      // Hard navigation: asegura cookie + LS visibles para middleware y /api/*
+      window.location.assign("/dashboard");
     } catch (err) {
       const message =
         (err as { response?: { data?: { message?: string } }; message?: string })
@@ -38,7 +41,6 @@ export default function LoginPage() {
         (err as Error)?.message ||
         "No se pudo iniciar sesión";
       setError(message);
-    } finally {
       setLoading(false);
     }
   }

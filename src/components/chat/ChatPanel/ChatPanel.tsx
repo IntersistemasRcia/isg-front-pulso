@@ -14,6 +14,7 @@ import {
 } from "@/lib/chat/parsePulsoChatHeaders";
 import { extractToolExecutionsFromParts } from "@/lib/chat/extractToolExecutions";
 import { syncSpArquitecturaFromApi } from "@/lib/pulso/arquitecturaStorage";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { getStoredToken } from "@/utils/api";
 import { toUserMessage } from "@/utils/userFacingErrors";
 import styles from "./ChatPanel.module.css";
@@ -41,6 +42,7 @@ function readDebugEnabled(): boolean {
  * Panel de chat: useChat + selector de modelo multi-LLM.
  */
 export function ChatPanel() {
+  const { token: authToken } = useAuth();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
@@ -59,12 +61,12 @@ export function ChatPanel() {
 
   /** Cache local de GET /SPs_arquitectura (nombres y tipos de parámetro por SP). */
   useEffect(() => {
-    const token = getStoredToken();
+    const token = authToken ?? getStoredToken();
     if (!token) return;
     void syncSpArquitecturaFromApi(token).catch(() => {
       // El chat sigue funcionando: el servidor refresca el catálogo en POST /api/chat.
     });
-  }, []);
+  }, [authToken]);
 
   function handleModelChange(nextId: string) {
     const normalized = normalizeModelId(nextId);
@@ -81,7 +83,7 @@ export function ChatPanel() {
       new DefaultChatTransport({
         api: "/api/chat",
         headers: (): Record<string, string> => {
-          const token = getStoredToken();
+          const token = authToken ?? getStoredToken();
           return token ? { Authorization: `Bearer ${token}` } : {};
         },
         body: { modelId },
@@ -94,7 +96,7 @@ export function ChatPanel() {
           return response;
         },
       }),
-    [modelId],
+    [modelId, authToken],
   );
 
   const { messages, sendMessage, status, error, clearError } = useChat({

@@ -198,7 +198,6 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
   for (const modelId of modelChain) {
     const definition = getModelDefinition(modelId);
     const compactedMessages = compactUiMessagesForModel(messages, definition);
-    const modelMessages = await convertToModelMessages(compactedMessages);
 
     const prepared = prepareChatPrompt({
       definition,
@@ -208,6 +207,12 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
       historySummary,
       companyName,
       clienteId,
+    });
+
+    // Con tools, convertToModelMessages reaplica toModelOutput al historial
+    // (sin esto el LLM relee rows/previewRows gordos en turnos siguientes).
+    const modelMessages = await convertToModelMessages(compactedMessages, {
+      tools: prepared.tools,
     });
 
     try {
