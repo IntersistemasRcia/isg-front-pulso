@@ -7,13 +7,16 @@ import { MessageList } from "@/components/chat/MessageList/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput/ChatInput";
 import { TypingIndicator } from "@/components/chat/TypingIndicator/TypingIndicator";
 import { ModelSelector } from "@/components/chat/ModelSelector/ModelSelector";
+import { ChatFaqModal } from "@/components/chat/ChatFaqModal/ChatFaqModal";
 import { DEFAULT_MODEL_ID, MODEL_STORAGE_KEY, normalizeModelId } from "@/lib/llm/registry";
 import {
   parsePulsoChatDebugHeaders,
   type PulsoChatDebugInfo,
 } from "@/lib/chat/parsePulsoChatHeaders";
 import { extractToolExecutionsFromParts } from "@/lib/chat/extractToolExecutions";
+import { stripToolRowsForTransport } from "@/lib/chat/stripToolRowsForTransport";
 import { syncSpArquitecturaFromApi } from "@/lib/pulso/arquitecturaStorage";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { getStoredToken } from "@/utils/api";
 import { toUserMessage } from "@/utils/userFacingErrors";
 import styles from "./ChatPanel.module.css";
@@ -41,11 +44,13 @@ function readDebugEnabled(): boolean {
  * Panel de chat: useChat + selector de modelo multi-LLM.
  */
 export function ChatPanel() {
+  const { token: authToken, sessionReady } = useAuth();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [debugInfo, setDebugInfo] = useState<PulsoChatDebugInfo | null>(null);
+  const [faqOpen, setFaqOpen] = useState(false);
   const debugInfoRef = useRef<(info: PulsoChatDebugInfo | null) => void>(() => {});
 
   useEffect(() => {
@@ -59,12 +64,13 @@ export function ChatPanel() {
 
   /** Cache local de GET /SPs_arquitectura (nombres y tipos de parámetro por SP). */
   useEffect(() => {
-    const token = getStoredToken();
+    if (!sessionReady) return;
+    const token = authToken ?? getStoredToken();
     if (!token) return;
     void syncSpArquitecturaFromApi(token).catch(() => {
       // El chat sigue funcionando: el servidor refresca el catálogo en POST /api/chat.
     });
-  }, []);
+  }, [authToken, sessionReady]);
 
   function handleModelChange(nextId: string) {
     const normalized = normalizeModelId(nextId);
@@ -81,12 +87,39 @@ export function ChatPanel() {
       new DefaultChatTransport({
         api: "/api/chat",
         headers: (): Record<string, string> => {
-          const token = getStoredToken();
-          return token ? { Authorization: `Bearer ${token}` } : {};
+          const token = authToken ?? getStoredToken();
+          if (!token) return {};
+          return {
+            Authorization: `Bearer ${token}`,
+            "x-pulso-token": token,
+          };
         },
         body: { modelId },
+        prepareSendMessagesRequest: ({ messages, body, headers, credentials, api }) => ({
+          api,
+          headers,
+          credentials,
+          body: {
+            ...(body ?? {}),
+            messages: stripToolRowsForTransport(messages),
+          },
+        }),
         fetch: async (input, init) => {
-          const response = await fetch(input, init);
+          const token = authToken ?? getStoredToken();
+          const headers = new Headers(init?.headers);
+          if (token) {
+            if (!headers.has("Authorization")) {
+              headers.set("Authorization", `Bearer ${token}`);
+            }
+            if (!headers.has("x-pulso-token")) {
+              headers.set("x-pulso-token", token);
+            }
+          }
+          const response = await fetch(input, {
+            ...init,
+            headers,
+            credentials: "same-origin",
+          });
           if (readDebugEnabled()) {
             const info = parsePulsoChatDebugHeaders(response.headers);
             if (info) debugInfoRef.current(info);
@@ -94,7 +127,7 @@ export function ChatPanel() {
           return response;
         },
       }),
-    [modelId],
+    [modelId, authToken],
   );
 
   const { messages, sendMessage, status, error, clearError } = useChat({
@@ -150,11 +183,28 @@ export function ChatPanel() {
     await sendMessage({ text });
   }
 
+  async function handleFaqSelect(question: string) {
+    const text = question.trim();
+    if (!text || isBusy) return;
+    setFaqOpen(false);
+    clearError();
+    setInput("");
+    await sendMessage({ text });
+  }
+
   const showDebug = debugEnabled && (debugInfo || toolExecutions.length > 0);
 
   return (
     <div className={styles.chat}>
       <header className={styles.header}>
+        <button
+          type="button"
+          className={styles.helpBtn}
+          onClick={() => setFaqOpen(true)}
+          disabled={isBusy}
+        >
+          Ayuda
+        </button>
         <ModelSelector
           value={modelId}
           onChange={handleModelChange}
@@ -228,6 +278,7 @@ export function ChatPanel() {
         messages={messages}
         bottomRef={bottomRef}
         streamingMessageId={streamingMessageId}
+        onOpenFaq={() => setFaqOpen(true)}
       />
 
       {isBusy ? <TypingIndicator label={getBusyLabel()} /> : null}
@@ -246,6 +297,15 @@ export function ChatPanel() {
         onSubmit={() => {
           void handleSubmit();
         }}
+      />
+
+      <ChatFaqModal
+        open={faqOpen}
+        onClose={() => setFaqOpen(false)}
+        onSelect={(q) => {
+          void handleFaqSelect(q);
+        }}
+        disabled={isBusy}
       />
     </div>
   );

@@ -138,11 +138,39 @@ Fuente en backend (`EjecutorController.cs`, clase `PeticionSpDto`):
 - Dapper recibe claves **sin `@`**; el front resuelve nombres contra `SPs_arquitectura` (`coerceParamsForSp`).
 - Fechas `datetime`/`date` del catálogo → **dd/MM/yyyy** (ej. `03/07/2026`).
 
-**Capa LLM vs API:** la tool `ejecutarConsultaPulso` recibe parámetros como lista `{ nombre, valor }` (compatibilidad Groq/OpenAI tools); el servidor las convierte a `parametros: Record<string, unknown>` antes del POST.
+**Capa LLM vs API:** la tool `ejecutarConsultaPulso` recibe parámetros como lista `{ nombre, valor }` (compatibilidad Groq/OpenAI tools); el servidor las convierte a `parametros: Record<string, unknown>` antes del POST. Campo opcional `modoResultado`: `preview50` | `completo` (tras un `RESULT_LARGE`).
 
-**Respuesta exitosa:** array JSON de filas (`IEnumerable<dynamic>`), no un wrapper `{ data: … }`.
+**Respuesta exitosa (preferida):** wrapper JSON:
+
+```json
+{
+  "ok": true,
+  "rows": [ ... ],
+  "totalRows": 183,
+  "truncated": true,
+  "limiteFilas": 50,
+  "totalRowsExact": true
+}
+```
+
+**Compat:** si el API aún devuelve un array crudo de filas, el front lo normaliza a `{ ok, rows, totalRows }`.
+
+**Body opcional:** `limiteFilas` — el API debería materializar como máximo N filas en la respuesta (el SP puede seguir corriendo entero en SQL Server).
+
+**Tokens (historial):** el front compacta tool outputs de turnos previos y reaplica `toModelOutput` al convertir a mensajes del modelo (`convertToModelMessages` + tools), para no reenviar `rows` al LLM.
 
 **Errores:** `{ "error": "...", "detalle": "..." }` con HTTP 400/500.
+
+### Gate de resultados grandes
+
+Umbral de negocio: **50 filas**.
+
+1. Primera ejecución: `limiteFilas: 50` (probe).
+2. Si el API responde con **`totalRows` real** + `truncated` / `totalRowsExact: true` → el front muestra adelanto de 50, dice el total exacto y **no** trae todo el listado todavía.
+3. Excel solo con `modoResultado=completo` y **más de 50** filas.
+4. Si el API aún no da COUNT (`totalRowsExact: false` o `totalRows` = tamaño del lote) → el front dice “más de 50” y no inventa 51.
+
+Contrato backend detallado + prompt para isg-api-pulso: [`docs/BACKEND_EJECUTAR_SP_RESULT_SIZE.md`](./BACKEND_EJECUTAR_SP_RESULT_SIZE.md).
 
 ## Reglas de negocio (backend)
 
@@ -185,12 +213,67 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 | Ver SPs candidatos del turno | Network → `POST /api/chat` → headers `X-Pulso-Sp-Candidates`, o chat `?debug=1` |
 | Ver SP **ejecutado** / fallido | `pm2 logs` → `[pulso] exec sp=… ok=… paramsKeys=… missing=…`; o `?debug=1` → “SP ejecutado / intentado” |
 | `messages` vs `raw_messages` en log `[chat]` | `raw_messages` = historial del cliente; `messages` = tras `windowMessages` (últimos 12). Tokens crecen con la ventana + tool results (`tool_results_kb`) |
+| Chat muestra “51 marcas” y luego 1962 | API sin COUNT real (`totalRows`=lote). Ver `BACKEND_EJECUTAR_SP_RESULT_SIZE.md`. Front ya no afirma 51 si `totalRowsExact=false`. |
+| “Ver todos” solo muestra ~50 filas | Pedir `modoResultado=completo` → Excel + adelanto 50 |
+| `limiteFilas` no reduce payload | Backend aún no implementa el wrapper; el front igual hace gate si detecta overflow |
 
 ## Debug operativo (PM2 + `?debug=1`)
 
 - Log siempre (también production): `[pulso] exec sp=… ok=true|false ms=… paramsKeys=FechaDesde,FechaHasta [code=…] [missing=…] [rows=N]`
 - Chat con `?debug=1`: panel con candidatos (headers) + **todas** las tool calls del último turno assistant (ok / fail / missing).
 - No hay header `X-Pulso-Sp-Executed` (streaming lo vaciaría); la fuente de verdad en servidor es el log.
+
+## Prompt para `limiteFilas` + wrapper en isg-api-pulso
+
+Copiar en el repo [isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso) (rama `develop`):
+
+```
+Trabajá en isg-api-pulso (ASP.NET, Dapper, SQL Server).
+
+Objetivo: POST /api/v1/pulso/ejecutar-sp debe soportar límite de filas y devolver
+un wrapper JSON (no solo el array crudo), para que el front Pulso pueda avisar
+cuando hay >50 registros sin inundar al LLM.
+
+Cambios en PeticionSpDto / body camelCase:
+- nombreSp (ya existe)
+- parametros (ya existe)
+- limiteFilas?: int?   // opcional
+
+Respuesta exitosa (200) — SIEMPRE este shape (breaking change OK; el front ya lo parsea):
+{
+  "ok": true,
+  "rows": [ /* hasta N objetos */ ],
+  "totalRows": <int>,
+  "truncated": <bool>,
+  "limiteFilas": <int|null>
+}
+
+Reglas:
+1) Si limiteFilas es null/omitido: devolver todas las filas del SP.
+   totalRows = rows.Count, truncated = false, limiteFilas = null.
+2) Si limiteFilas = N (>0):
+   - Materializá como máximo N filas en "rows".
+   - Si el reader/enumerable tenía más: truncated = true.
+   - totalRows: idealmente el total real. Si no podés contarlo sin second pass,
+     usá al menos rows.Count y truncated=true cuando cortaste (el front trata
+     truncated||totalRows>50 como RESULT_LARGE).
+   - Preferí no bufferizar en memoria más de N+1 filas al armar la respuesta
+     (IDataReader / Take(N+1)).
+3) Prefijo sp_ISG_Vision_ y auth JWT sin cambios.
+4) Errores 400/500 siguen { error, detalle }.
+5) No hace falta endpoint /analizar-sp ni COUNT por SP: el “análisis” es
+   totalRows/truncated de esta ejecución.
+
+Archivos típicos: Models (PeticionSpDto), Controllers/EjecutorController.cs,
+Services/SqlEjecutorService.cs, ISqlEjecutorService.cs.
+
+Aceptación:
+- Sin limiteFilas → wrapper con todas las filas, truncated=false.
+- Con limiteFilas=50 y SP que devuelve 200 → rows.Length<=50, truncated=true,
+  totalRows>=50 (mejor si totalRows=200).
+- Front Pulso: primera llamada con limiteFilas=51; si truncated o totalRows>50
+  muestra al usuario opciones (filtros / primeros 50 / completo).
+```
 
 ## Prompt para implementar `requerido` / `tieneDefault` en isg-api-pulso
 

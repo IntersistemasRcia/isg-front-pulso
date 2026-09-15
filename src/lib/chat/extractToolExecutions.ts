@@ -49,7 +49,8 @@ export function extractToolExecutionsFromParts(
         ? output.missingRequired.map(String)
         : undefined;
       out.push({
-        nombreSp: String(output.nombreSp ?? nombreFromInput || "(desconocido)"),
+        nombreSp:
+          String(output.nombreSp ?? nombreFromInput).trim() || "(desconocido)",
         ok: output.ok !== false,
         code: typeof output.code === "string" ? output.code : undefined,
         missingRequired: missing,

@@ -2,19 +2,18 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { MyButtons } from "@/utils/MyButtons";
 import { useAuth } from "@/components/providers/AuthProvider";
 import styles from "./DashboardSidebar.module.css";
 
 export function DashboardSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { user, logout } = useAuth();
 
   function handleLogout() {
     logout();
-    router.replace("/login");
+    window.location.assign("/login");
   }
 
   return (
