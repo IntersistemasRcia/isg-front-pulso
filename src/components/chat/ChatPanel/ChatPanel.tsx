@@ -7,6 +7,7 @@ import { MessageList } from "@/components/chat/MessageList/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput/ChatInput";
 import { TypingIndicator } from "@/components/chat/TypingIndicator/TypingIndicator";
 import { ModelSelector } from "@/components/chat/ModelSelector/ModelSelector";
+import { ChatFaqModal } from "@/components/chat/ChatFaqModal/ChatFaqModal";
 import { DEFAULT_MODEL_ID, MODEL_STORAGE_KEY, normalizeModelId } from "@/lib/llm/registry";
 import {
   parsePulsoChatDebugHeaders,
@@ -49,6 +50,7 @@ export function ChatPanel() {
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [debugInfo, setDebugInfo] = useState<PulsoChatDebugInfo | null>(null);
+  const [faqOpen, setFaqOpen] = useState(false);
   const debugInfoRef = useRef<(info: PulsoChatDebugInfo | null) => void>(() => {});
 
   useEffect(() => {
@@ -181,11 +183,28 @@ export function ChatPanel() {
     await sendMessage({ text });
   }
 
+  async function handleFaqSelect(question: string) {
+    const text = question.trim();
+    if (!text || isBusy) return;
+    setFaqOpen(false);
+    clearError();
+    setInput("");
+    await sendMessage({ text });
+  }
+
   const showDebug = debugEnabled && (debugInfo || toolExecutions.length > 0);
 
   return (
     <div className={styles.chat}>
       <header className={styles.header}>
+        <button
+          type="button"
+          className={styles.helpBtn}
+          onClick={() => setFaqOpen(true)}
+          disabled={isBusy}
+        >
+          Ayuda
+        </button>
         <ModelSelector
           value={modelId}
           onChange={handleModelChange}
@@ -259,6 +278,7 @@ export function ChatPanel() {
         messages={messages}
         bottomRef={bottomRef}
         streamingMessageId={streamingMessageId}
+        onOpenFaq={() => setFaqOpen(true)}
       />
 
       {isBusy ? <TypingIndicator label={getBusyLabel()} /> : null}
@@ -277,6 +297,15 @@ export function ChatPanel() {
         onSubmit={() => {
           void handleSubmit();
         }}
+      />
+
+      <ChatFaqModal
+        open={faqOpen}
+        onClose={() => setFaqOpen(false)}
+        onSelect={(q) => {
+          void handleFaqSelect(q);
+        }}
+        disabled={isBusy}
       />
     </div>
   );

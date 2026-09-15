@@ -7,9 +7,16 @@ export type MessageListProps = {
   messages: UIMessage[];
   bottomRef?: RefObject<HTMLDivElement | null>;
   streamingMessageId?: string | null;
+  /** Abre el popup de preguntas sugeridas (empty state). */
+  onOpenFaq?: () => void;
 };
 
-export function MessageList({ messages, bottomRef, streamingMessageId }: MessageListProps) {
+export function MessageList({
+  messages,
+  bottomRef,
+  streamingMessageId,
+  onOpenFaq,
+}: MessageListProps) {
   if (messages.length === 0) {
     return (
       <div className={styles.messages}>
@@ -19,6 +26,15 @@ export function MessageList({ messages, bottomRef, streamingMessageId }: Message
             Consultá ventas, stock, clientes o KPIs. El asistente consultará la
             base SQL del cliente mediante el agente local.
           </p>
+          {onOpenFaq ? (
+            <button
+              type="button"
+              className={styles.faqCta}
+              onClick={onOpenFaq}
+            >
+              ¿Qué puedo preguntar?
+            </button>
+          ) : null}
         </div>
       </div>
     );
