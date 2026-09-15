@@ -23,8 +23,7 @@ export function MessageList({
         <div className={styles.empty}>
           <div className={styles.emptyTitle}>¿En qué te ayudo?</div>
           <p>
-            Consultá ventas, stock, clientes o KPIs. El asistente consultará la
-            base SQL del cliente mediante el agente local.
+            Consultá ventas, margenes, stock, clientes, cta cte o KPIs.
           </p>
           {onOpenFaq ? (
             <button
