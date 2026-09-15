@@ -10,11 +10,10 @@ import {
   getStoredUserJson,
   storeToken,
   storeUserJson,
+  waitForAuthSession,
 } from "@/utils/api";
 import { isTokenExpired, mapPayloadToUser, normalizeAuthToken } from "@/utils/auth";
-import {
-  clearSpArquitecturaStorage,
-} from "@/lib/pulso/arquitecturaStorage";
+import { clearSpArquitecturaStorage } from "@/lib/pulso/arquitecturaStorage";
 import { decodeJwt } from "jose";
 
 interface AuthContextValue {
@@ -22,6 +21,8 @@ interface AuthContextValue {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /** true cuando /api/auth/session aceptó el JWT (listo para status/providers). */
+  sessionReady: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => void;
 }
@@ -40,26 +41,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
-    const storedToken = getStoredToken();
-    const storedUser = getStoredUserJson();
+    let cancelled = false;
 
-    if (!storedToken || isTokenExpired(storedToken)) {
-      clearAuthStorage();
-      setIsLoading(false);
-      return;
+    async function hydrate() {
+      const storedToken = getStoredToken();
+      const storedUser = getStoredUserJson();
+
+      if (!storedToken || isTokenExpired(storedToken)) {
+        clearAuthStorage();
+        if (!cancelled) setIsLoading(false);
+        return;
+      }
+
+      try {
+        const parsedUser = storedUser
+          ? (JSON.parse(storedUser) as User)
+          : hydrateUserFromToken(storedToken);
+
+        const ok = await waitForAuthSession(storedToken, {
+          attempts: 8,
+          delayMs: 100,
+        });
+        if (cancelled) return;
+
+        if (!ok) {
+          clearAuthStorage();
+          void clearAuthCookie();
+          setIsLoading(false);
+          return;
+        }
+
+        setToken(storedToken);
+        setUser(parsedUser);
+        setSessionReady(true);
+      } catch {
+        clearAuthStorage();
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     }
 
-    try {
-      const parsedUser = storedUser ? (JSON.parse(storedUser) as User) : hydrateUserFromToken(storedToken);
-      setToken(storedToken);
-      setUser(parsedUser);
-    } catch {
-      clearAuthStorage();
-    } finally {
-      setIsLoading(false);
-    }
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(async (credentials: LoginCredentials) => {
@@ -85,9 +113,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const nextUser = hydrateUserFromToken(accessToken, data.user);
     storeToken(accessToken);
     storeUserJson(JSON.stringify(nextUser));
+
+    const ok = await waitForAuthSession(accessToken, {
+      attempts: 15,
+      delayMs: 100,
+    });
+    if (!ok) {
+      clearAuthStorage();
+      throw new Error(
+        "El servidor no aceptó la sesión. Si está detrás de IIS, revise que no elimine headers de autenticación.",
+      );
+    }
+
     setToken(accessToken);
     setUser(nextUser);
-    // Catálogo SP: se sincroniza al montar el dashboard (evita 401 en carrera post-login).
+    setSessionReady(true);
   }, []);
 
   const logout = useCallback(() => {
@@ -95,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearSpArquitecturaStorage();
     setToken(null);
     setUser(null);
+    setSessionReady(false);
     void clearAuthCookie();
   }, []);
 
@@ -102,12 +143,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       token,
-      isAuthenticated: Boolean(token && user),
+      isAuthenticated: Boolean(token && user && sessionReady),
       isLoading,
+      sessionReady,
       login,
       logout,
     }),
-    [user, token, isLoading, login, logout],
+    [user, token, isLoading, sessionReady, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

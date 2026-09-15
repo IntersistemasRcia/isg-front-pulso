@@ -13,7 +13,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { user, token, isAuthenticated, isLoading } = useAuth();
+  const { user, token, isAuthenticated, isLoading, sessionReady } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -21,7 +21,7 @@ export default function DashboardLayout({
     }
   }, [isLoading, isAuthenticated, router]);
 
-  if (isLoading || !token) {
+  if (isLoading || !token || !sessionReady) {
     return <div className={styles.loading}>Cargando sesión…</div>;
   }
 

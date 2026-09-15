@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import {
   AUTH_COOKIE_NAME,
+  AUTH_TOKEN_HEADER,
   TOKEN_STORAGE_KEY,
   USER_STORAGE_KEY,
 } from "@/utils/constants";
@@ -32,15 +33,13 @@ export function getStoredToken(): string | null {
 
 /**
  * Persiste JWT en localStorage.
- * La cookie de sesión la setea el server (HttpOnly) en POST /api/auth/login.
- * Se limpia cualquier cookie no-HttpOnly legada que pudiera corromper el JWT (+ → espacio).
+ * La API autentica con Authorization y x-pulso-token (IIS no suele strippear este último).
+ * La cookie HttpOnly la setea POST /api/auth/login (middleware del dashboard).
  */
 export function storeToken(token: string): void {
   if (typeof window === "undefined") return;
   const normalized = normalizeAuthToken(token);
   window.localStorage.setItem(TOKEN_STORAGE_KEY, normalized);
-  // Evita cookie client-side vieja compitiendo con la HttpOnly del login.
-  document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
 }
 
 /** Elimina token y datos de sesión en el cliente. */
@@ -75,6 +74,16 @@ export function storeUserJson(userJson: string): void {
   window.localStorage.setItem(USER_STORAGE_KEY, userJson);
 }
 
+/** Adjunta Authorization + x-pulso-token (IIS-safe) a un Headers. */
+export function applyAuthHeaders(headers: Headers, token: string): void {
+  if (!headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (!headers.has(AUTH_TOKEN_HEADER)) {
+    headers.set(AUTH_TOKEN_HEADER, token);
+  }
+}
+
 export type AuthFetchInit = RequestInit & {
   /** JWT explícito; si omite, usa localStorage. */
   token?: string | null;
@@ -83,7 +92,7 @@ export type AuthFetchInit = RequestInit & {
 };
 
 /**
- * fetch autenticado: Bearer + credentials + un reintento ante 401.
+ * fetch autenticado: Bearer + x-pulso-token + credentials + reintento ante 401.
  */
 export async function authFetch(
   input: RequestInfo | URL,
@@ -93,9 +102,7 @@ export async function authFetch(
   const token = (tokenOpt ?? getStoredToken()) || null;
 
   const headers = new Headers(rest.headers);
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
+  if (token) applyAuthHeaders(headers, token);
 
   const execute = () =>
     fetch(input, {
@@ -116,12 +123,38 @@ export async function authFetch(
 }
 
 /**
- * Interceptor: adjunta Authorization Bearer en cada request al backend local.
+ * Espera a que el servidor acepte el JWT (cookie o headers).
+ * Útil post-login detrás de IIS/ARR antes de entrar al dashboard.
+ */
+export async function waitForAuthSession(
+  token: string,
+  opts: { attempts?: number; delayMs?: number } = {},
+): Promise<boolean> {
+  const attempts = opts.attempts ?? 10;
+  const delayMs = opts.delayMs ?? 100;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const res = await authFetch("/api/auth/session", {
+        token,
+        authRetries: 0,
+      });
+      if (res.ok) return true;
+    } catch {
+      // retry
+    }
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return false;
+}
+
+/**
+ * Interceptor: adjunta Authorization + x-pulso-token.
  */
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getStoredToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+    config.headers[AUTH_TOKEN_HEADER] = token;
   }
   return config;
 });
@@ -131,11 +164,9 @@ api.interceptors.response.use(
   (error: AxiosError<{ message?: string }>) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
       const url = String(error.config?.url ?? "");
-      // No limpiar sesión ante fallo del propio login.
-      if (url.includes("/api/auth/login")) {
+      if (url.includes("/api/auth/login") || url.includes("/api/auth/session")) {
         return Promise.reject(error);
       }
-      // Solo invalidar si realmente había sesión (evita wipe por race sin Bearer).
       if (getStoredToken()) {
         clearAuthStorage();
         void clearAuthCookie();

@@ -21,7 +21,7 @@ const POLL_MS = 60_000;
  * Espera token de AuthProvider antes de consultar (evita 401 post-login).
  */
 export function PulsoStatusIndicator() {
-  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { token, isAuthenticated, isLoading: authLoading, sessionReady } = useAuth();
   const [data, setData] = useState<PulsoStatusPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -46,7 +46,7 @@ export function PulsoStatusIndicator() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !sessionReady) return;
     if (!isAuthenticated || !token) {
       setLoading(false);
       setData({
@@ -60,7 +60,7 @@ export function PulsoStatusIndicator() {
     void load(token);
     const id = window.setInterval(() => void load(token), POLL_MS);
     return () => window.clearInterval(id);
-  }, [authLoading, isAuthenticated, token, load]);
+  }, [authLoading, sessionReady, isAuthenticated, token, load]);
 
   const isOk = data?.status === "ok";
   const label = loading || authLoading

@@ -32,8 +32,7 @@ export default function LoginPage() {
     try {
       await login({ username: username.trim(), password });
       hardNavigatingRef.current = true;
-      // Deja que el browser asiente la cookie HttpOnly del Set-Cookie del login.
-      await new Promise((r) => window.setTimeout(r, 50));
+      // login() ya esperó /api/auth/session OK (headers + cookie listos).
       window.location.assign("/dashboard");
     } catch (err) {
       const message =
