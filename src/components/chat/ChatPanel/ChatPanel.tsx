@@ -42,7 +42,7 @@ function readDebugEnabled(): boolean {
  * Panel de chat: useChat + selector de modelo multi-LLM.
  */
 export function ChatPanel() {
-  const { token: authToken } = useAuth();
+  const { token: authToken, sessionReady } = useAuth();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
@@ -61,12 +61,13 @@ export function ChatPanel() {
 
   /** Cache local de GET /SPs_arquitectura (nombres y tipos de parámetro por SP). */
   useEffect(() => {
+    if (!sessionReady) return;
     const token = authToken ?? getStoredToken();
     if (!token) return;
     void syncSpArquitecturaFromApi(token).catch(() => {
       // El chat sigue funcionando: el servidor refresca el catálogo en POST /api/chat.
     });
-  }, [authToken]);
+  }, [authToken, sessionReady]);
 
   function handleModelChange(nextId: string) {
     const normalized = normalizeModelId(nextId);
@@ -84,14 +85,23 @@ export function ChatPanel() {
         api: "/api/chat",
         headers: (): Record<string, string> => {
           const token = authToken ?? getStoredToken();
-          return token ? { Authorization: `Bearer ${token}` } : {};
+          if (!token) return {};
+          return {
+            Authorization: `Bearer ${token}`,
+            "x-pulso-token": token,
+          };
         },
         body: { modelId },
         fetch: async (input, init) => {
           const token = authToken ?? getStoredToken();
           const headers = new Headers(init?.headers);
-          if (token && !headers.has("Authorization")) {
-            headers.set("Authorization", `Bearer ${token}`);
+          if (token) {
+            if (!headers.has("Authorization")) {
+              headers.set("Authorization", `Bearer ${token}`);
+            }
+            if (!headers.has("x-pulso-token")) {
+              headers.set("x-pulso-token", token);
+            }
           }
           const response = await fetch(input, {
             ...init,

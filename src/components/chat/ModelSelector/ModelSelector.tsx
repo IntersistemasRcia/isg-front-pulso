@@ -22,14 +22,14 @@ export interface ModelSelectorProps {
  * Selector de modelo LLM con grupos free/premium y enlace a configuración BYOK.
  */
 export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps) {
-  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { token, isAuthenticated, isLoading: authLoading, sessionReady } = useAuth();
   const [models, setModels] = useState<ProviderAvailability[]>([]);
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !sessionReady) return;
     if (!isAuthenticated || !token) {
       setLoading(false);
       setModels([]);
@@ -72,7 +72,7 @@ export function ModelSelector({ value, onChange, disabled }: ModelSelectorProps)
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isAuthenticated, token]);
+  }, [authLoading, sessionReady, isAuthenticated, token]);
 
   useEffect(() => {
     if (!models.length) return;
