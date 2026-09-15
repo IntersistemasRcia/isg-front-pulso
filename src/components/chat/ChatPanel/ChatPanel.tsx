@@ -13,6 +13,7 @@ import {
   type PulsoChatDebugInfo,
 } from "@/lib/chat/parsePulsoChatHeaders";
 import { extractToolExecutionsFromParts } from "@/lib/chat/extractToolExecutions";
+import { stripToolRowsForTransport } from "@/lib/chat/stripToolRowsForTransport";
 import { syncSpArquitecturaFromApi } from "@/lib/pulso/arquitecturaStorage";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { getStoredToken } from "@/utils/api";
@@ -92,6 +93,15 @@ export function ChatPanel() {
           };
         },
         body: { modelId },
+        prepareSendMessagesRequest: ({ messages, body, headers, credentials, api }) => ({
+          api,
+          headers,
+          credentials,
+          body: {
+            ...(body ?? {}),
+            messages: stripToolRowsForTransport(messages),
+          },
+        }),
         fetch: async (input, init) => {
           const token = authToken ?? getStoredToken();
           const headers = new Headers(init?.headers);

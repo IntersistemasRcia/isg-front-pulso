@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPulsoApiBaseUrl } from "@/lib/pulso/config";
-import { fetchSpsArquitectura, PulsoApiError } from "@/lib/pulso/client";
+import { getSpsArquitecturaCached } from "@/lib/pulso/catalog";
+import { PulsoApiError } from "@/lib/pulso/client";
 import { translateHttpStatus, translateUnknownError } from "@/utils/userFacingErrors";
 import { requireAuth } from "@/utils/requireAuth";
 
@@ -54,10 +55,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const catalog = await fetchSpsArquitectura({
-      sessionToken: auth.token,
-      signal: AbortSignal.timeout(10_000),
-    });
+    // Misma cache TTL que el chat (~5 min): evita refetch completo del catálogo cada poll.
+    const catalog = await getSpsArquitecturaCached(auth.token);
 
     const count = catalog.length;
     return NextResponse.json({
