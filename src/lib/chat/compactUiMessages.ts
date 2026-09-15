@@ -1,42 +1,44 @@
 import { isToolUIPart, type UIMessage } from "ai";
 import type { ModelDefinition } from "@/lib/llm/types";
+import { stripToolRowsFromOutput } from "@/lib/chat/stripToolRowsForTransport";
 
 const ASSISTANT_TEXT_MAX_CHARS = 180;
 
-function summarizeToolOutput(output: unknown): string {
-  if (output == null) return "[ERP: sin datos]";
-  if (typeof output !== "object") return `[ERP: ${String(output).slice(0, 80)}]`;
-
-  const obj = output as Record<string, unknown>;
-  const rows =
-    Array.isArray(obj.rows) ? obj.rows.length
-    : Array.isArray(obj.data) ? obj.data.length
-    : Array.isArray(obj.result) ? obj.result.length
-    : typeof obj.mostrando === "number" ? obj.mostrando
-    : undefined;
-
-  const totalExact = obj.totalExact === true;
-  const totalRows =
-    typeof obj.totalRows === "number" ? obj.totalRows : rows;
-  const truncated = Boolean(obj.truncated);
-  const hayExcel = obj.delivery === "excel" && typeof obj.exportId === "string";
-
-  if (obj.ok === false && obj.code === "RESULT_LARGE") {
-    return `[ERP: RESULT_LARGE — ${totalExact && totalRows != null ? `${totalRows} filas` : "más de 50"}]`;
+/**
+ * Stub sin arrays para historial: alineado con lo que toModelOutput puede resumir
+ * (ok, totales, avisoUsuario, exportId) sin reenviar filas.
+ */
+export function compactToolOutputForHistory(output: unknown): Record<string, unknown> {
+  if (output == null || typeof output !== "object") {
+    return { ok: false, summary: "[ERP: sin datos]" };
   }
 
-  if (obj.ok === false && obj.message) {
-    return `[ERP: error — ${String(obj.message).slice(0, 100)}]`;
+  const obj = stripToolRowsFromOutput(output) as Record<string, unknown>;
+  const stub: Record<string, unknown> = {};
+
+  if (typeof obj.ok === "boolean") stub.ok = obj.ok;
+  if (typeof obj.code === "string") stub.code = obj.code;
+  if (typeof obj.message === "string") stub.message = obj.message;
+  if (typeof obj.nombreSp === "string") stub.nombreSp = obj.nombreSp;
+  if (typeof obj.totalRows === "number") stub.totalRows = obj.totalRows;
+  if (obj.totalExact === true) stub.totalExact = true;
+  if (typeof obj.mostrando === "number") stub.mostrando = obj.mostrando;
+  if (typeof obj.atLeastRows === "number") stub.atLeastRows = obj.atLeastRows;
+  if (obj.truncated === true) stub.truncated = true;
+  if (obj.uiTable === true) stub.uiTable = true;
+  if (typeof obj.delivery === "string") stub.delivery = obj.delivery;
+  if (typeof obj.exportId === "string") stub.exportId = obj.exportId;
+  if (typeof obj.columnCount === "number") stub.columnCount = obj.columnCount;
+  if (typeof obj.avisoUsuario === "string") stub.avisoUsuario = obj.avisoUsuario;
+  if (obj.choices != null) stub.choices = obj.choices;
+  if (obj.optionalParamsHint != null) stub.optionalParamsHint = obj.optionalParamsHint;
+  if (obj.missingRequired != null) stub.missingRequired = obj.missingRequired;
+
+  if (Object.keys(stub).length === 0) {
+    return { ok: true, summary: "[ERP: resultado omitido del historial para eficiencia]" };
   }
 
-  if (totalRows != null) {
-    const exactBit = totalExact ? "exacto" : "aprox";
-    const truncBit = truncated ? ", adelanto en historial" : "";
-    const excelBit = hayExcel ? ", excel" : "";
-    return `[ERP: ${totalRows} filas (${exactBit}${truncBit}${excelBit})]`;
-  }
-
-  return "[ERP: resultado omitido del historial para eficiencia]";
+  return stub;
 }
 
 function clipAssistantText(text: string): string {
@@ -47,7 +49,7 @@ function clipAssistantText(text: string): string {
 
 /**
  * Compacta historial para TODOS los modelos cloud/local:
- * - Tool outputs de turnos anteriores al último user → resumen de 1 línea (sin filas).
+ * - Tool outputs de turnos anteriores al último user → metadata sin filas.
  * - Texto de asistente anterior → recorte corto.
  * El mensaje del último turno de usuario (y posteriores) se deja intacto para la UI/tools.
  */
@@ -76,7 +78,7 @@ export function compactUiMessagesForModel(
         if (isToolUIPart(part) && part.state === "output-available") {
           return {
             ...part,
-            output: { summary: summarizeToolOutput(part.output) },
+            output: compactToolOutputForHistory(part.output),
           };
         }
         return part;
