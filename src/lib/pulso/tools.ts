@@ -109,6 +109,42 @@ function logPulsoExec(opts: {
   console.info(parts.join(" "));
 }
 
+/**
+ * Instrucción al LLM tras fallo de ejecución.
+ * Si el SP rechazó un literal de filtro, priorizar ofrecer opciones válidas.
+ */
+function buildExecFailAvisoUsuario(
+  message: string | undefined,
+  catalogSp: SpArquitectura | undefined,
+): string {
+  const msg = (message ?? "").trim();
+  const looksLikeEnumReject =
+    /debe ser|valores?\s+permitid|TODAS|FACTURADAS|PEDIDOS|no\s+v[aá]lido|inv[aá]lido/i.test(
+      msg,
+    );
+
+  if (looksLikeEnumReject) {
+    const desc = (catalogSp?.descripcion ?? catalogSp?.description ?? "").trim();
+    return [
+      "NO digas que no hay informe ni que no existe esa consulta.",
+      "El filtro enviado no es un literal válido del parámetro.",
+      msg ? `Detalle técnico del error (uso interno): ${msg.slice(0, 240)}` : "",
+      desc
+        ? "Usá la descripción del catálogo: interpretá el pedido o ofrecé al usuario las opciones de filtro definidas ahí, en lenguaje de negocio, numeradas, y preguntá cuál prefiere."
+        : "Ofrecé al usuario las opciones válidas mencionadas en el error, en lenguaje de negocio, numeradas, y preguntá cuál prefiere.",
+      "Si ya queda claro el literal correcto, reintentá ejecutarConsultaPulso una vez con ese valor exacto.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return [
+    "Explicá el problema en una frase simple al usuario (sin jerga técnica).",
+    "Si el catálogo describe filtros del mismo informe, ofrecélos en lenguaje de negocio en lugar de decir que no hay informe.",
+    "Ofrecé reintentar o ajustar la búsqueda.",
+  ].join(" ");
+}
+
 function spUiTitle(
   catalogSp: SpArquitectura | undefined,
   nombreSp: string,
@@ -260,8 +296,10 @@ export function buildEjecutarConsultaPulsoTool(
             ...result,
             nombreSp,
             warnings: warnings.length ? warnings : undefined,
-            avisoUsuario:
-              "Explicá el problema en una frase simple al usuario (sin jerga técnica) y ofrecé reintentar o ajustar la búsqueda.",
+            avisoUsuario: buildExecFailAvisoUsuario(
+              typeof fail.message === "string" ? fail.message : undefined,
+              catalogSp,
+            ),
           }, truncateOptions);
         }
 
@@ -415,8 +453,7 @@ export function buildEjecutarConsultaPulsoTool(
           message,
           nombreSp,
           parametros: parametrosRecord,
-          avisoUsuario:
-            "Decile al usuario que no se pudo obtener la información ahora y sugerí reintentar en unos segundos.",
+          avisoUsuario: buildExecFailAvisoUsuario(message, catalogSp),
         };
       }
     },

@@ -84,6 +84,13 @@ export function buildPulsoSystemPrompt({
     "- NUNCA pidas ni ofrezcas imágenes, fotos, scans, PDFs, Word ni archivos adjuntos inventados. El Excel sale del botón en pantalla cuando la tool lo genera.",
     "- No uses tools de visión ni de generación de archivos: Pulso no las tiene.",
 
+    "## Filtros del mismo informe (obligatorio)",
+    "- Si la descripción de una consulta define valores fijos de un parámetro (literales + significado de negocio), interpretá el pedido del usuario con esos significados y ejecutá con el literal exacto.",
+    "- Si el usuario pide un subconjunto del mismo informe ya usado (ej. solo facturadas / todavía no facturadas / todas), reutilizá ESA consulta cambiando el filtro; NO digas que no existe un informe específico.",
+    "- Si no queda claro qué valor encaja, ofrecé las opciones definidas en la descripción (en lenguaje de negocio, numeradas) y preguntá cuál prefiere. Ejemplo de tono: «Puedo filtrar ese listado así: 1) todas las ventas (facturadas y pedidos) 2) solo con comprobante 3) solo las todavía no facturadas. ¿Cuál querés?»",
+    "- PROHIBIDO responder «no tengo un informe específico…» cuando el catálogo ya tiene una consulta aplicable con filtros descritos.",
+    "- Si la tool falla porque el valor del filtro no es uno de los literales permitidos, no inventes que falta el informe: ofrecé las opciones válidas (del error o de la descripción) o reintentá con el literal correcto si ya está claro.",
+
     "## Cuando no hay consulta exacta (obligatorio, cualquier tema)",
     "- Aplica a ventas, finanzas, clientes, stock, marcas, sucursales, etc.: si ninguna candidata cubre exactamente el pedido, NO inventes un fallo técnico.",
     "- Usá las «Alternativas cercanas» (si aparecen) o las mejores del catálogo rankeado: ofrecé 1 o 2 opciones en lenguaje de negocio, numeradas, y preguntá cuál prefiere o qué dato falta (código, fechas, rubro).",
@@ -113,7 +120,8 @@ export function buildPulsoSystemPrompt({
     "- Los parámetros de entrada salen de GET /SPs_arquitectura (sys.parameters). No inventes parámetros ni uses variables internas del SQL.",
     "- Fechas: dd/MM/yyyy (ej. 03/07/2026).",
     "- Búsquedas de texto: si el usuario pide comodín o «con %», poné el patrón en el parámetro de búsqueda del catálogo (ej. SearchTerm = %Pérez%). No agregues parámetros extra.",
-    "- Si una consulta falla, reintentá con los parámetros exactos del catálogo o pedí al usuario un dato de negocio faltante. Al usuario explicá el fallo en una frase simple y ofrecé reintentar o 1–2 alternativas cercanas.",
+    "- Si una consulta falla por valor de filtro inválido, usá el message/avisoUsuario: ofrecé los valores posibles en lenguaje de negocio o reintentá con el literal canónico. No digas que no hay informe.",
+    "- Si falla por otro motivo, pedí un dato de negocio faltante o reintentá. Al usuario: una frase simple + reintentar o 1–2 alternativas cercanas.",
     catalogHint,
     promptMode === "tool-only" ? "" : formatArquitecturaForPrompt(catalog, promptMode),
   ].filter(Boolean);

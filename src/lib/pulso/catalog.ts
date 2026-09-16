@@ -58,6 +58,16 @@ export function getSpParametros(sp: SpArquitectura): SpParametroArquitectura[] {
   return (sp.parametros ?? sp.parameters ?? []).filter((p) => !p.esOutput);
 }
 
+/** Tope de descripción Pulso en prompt (alineado al parser API, max 1000). */
+export const PULSO_DESC_PROMPT_MAX = 1000;
+
+function clipPulsoDesc(desc: string, max: number): string {
+  const t = desc.trim();
+  if (!t) return "";
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
 /** Texto compacto del catálogo para el System Prompt (sin SQL). */
 export function formatArquitecturaForPrompt(
   catalog: SpArquitectura[],
@@ -70,8 +80,7 @@ export function formatArquitecturaForPrompt(
   if (mode === "minimal") {
     const lines = catalog.map((sp) => {
       const name = getSpNombre(sp);
-      const desc = getSpDescripcion(sp);
-      const short = desc.length > 80 ? `${desc.slice(0, 77)}…` : desc;
+      const short = clipPulsoDesc(getSpDescripcion(sp), 400);
       return short ? `• ${name} — ${short}` : `• ${name}`;
     });
     return [
@@ -83,8 +92,7 @@ export function formatArquitecturaForPrompt(
   if (mode === "compact") {
     const lines = catalog.map((sp) => {
       const name = getSpNombre(sp);
-      const desc = getSpDescripcion(sp);
-      const short = desc.length > 120 ? `${desc.slice(0, 117)}…` : desc;
+      const short = clipPulsoDesc(getSpDescripcion(sp), 700);
       const params = formatSpParamHint(sp);
       return short
         ? `• ${name} — ${short} — ${params}`
@@ -99,7 +107,7 @@ export function formatArquitecturaForPrompt(
 
   const lines = catalog.map((sp) => {
     const name = getSpNombre(sp);
-    const desc = getSpDescripcion(sp);
+    const desc = clipPulsoDesc(getSpDescripcion(sp), PULSO_DESC_PROMPT_MAX);
     const params = getSpParametros(sp)
       .map((p) => {
         const pName = p.nombre;
@@ -135,7 +143,9 @@ export function formatClosestAlternativesHint(
     const name = getSpNombre(sp);
     const desc = getSpDescripcion(sp);
     const params = formatSpParamHint(sp);
-    const business = desc || name.replace(/^sp_ISG_Vision_/i, "").replace(/_/g, " ");
+    const business =
+      clipPulsoDesc(desc, 280) ||
+      name.replace(/^sp_ISG_Vision_/i, "").replace(/_/g, " ");
     return `${index + 1}) ${business} [interno: ${name}; params: ${params}]`;
   });
 
