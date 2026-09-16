@@ -32,12 +32,18 @@ export interface SpArquitectura {
 export interface EjecutarSpRequest {
   nombreSp: string;
   parametros?: Record<string, unknown>;
+  /**
+   * Si se informa, el API debería devolver como máximo N filas (+ metadata).
+   * Compat: backends viejos ignoran el campo y devuelven el array completo.
+   */
+  limiteFilas?: number | null;
 }
 
 /** Body JSON de POST /ejecutar-sp (Swagger + System.Text.Json camelCase). */
 export interface EjecutarSpApiBody {
   nombreSp: string;
   parametros?: Record<string, unknown>;
+  limiteFilas?: number | null;
 }
 
 export interface EjecutarSpResponse {
@@ -46,6 +52,16 @@ export interface EjecutarSpResponse {
   message?: string;
   data?: unknown;
   rows?: unknown[];
+  /** Total de filas del resultado (COUNT real preferido). */
+  totalRows?: number;
+  /** true si se aplicó límite y había más filas. */
+  truncated?: boolean;
+  limiteFilas?: number | null;
+  /**
+   * true = totalRows es COUNT real; false = solo tamaño del lote.
+   * Si omitido, el front infiere (totalRows > lote ⇒ exacto).
+   */
+  totalRowsExact?: boolean;
   request?: EjecutarSpRequest;
   [key: string]: unknown;
 }
