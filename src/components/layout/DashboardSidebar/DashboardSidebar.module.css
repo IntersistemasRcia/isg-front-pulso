@@ -57,11 +57,23 @@
 }
 
 .history {
-  display:none;
   flex: 1;
   overflow: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   padding-top: 1rem;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.historyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .historyTitle {
@@ -69,14 +81,93 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   opacity: 0.65;
-  margin-bottom: 0.65rem;
-  padding: 0 0.5rem;
+}
+
+.historyNewBtn {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.historyNewBtn:hover {
+  background: var(--color-sidebar-hover);
 }
 
 .historyEmpty {
   font-size: var(--font-size-sm);
   opacity: 0.55;
   padding: 0 0.5rem;
+}
+
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.historyItem {
+  display: flex;
+  align-items: stretch;
+  gap: 0.15rem;
+}
+
+.historyItemBtn {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.historyItemBtn:hover,
+.historyItemActive {
+  background: var(--color-sidebar-hover);
+  color: #fff;
+}
+
+.historyItemTitle {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.historyItemDate {
+  font-size: var(--font-size-xs);
+  opacity: 0.55;
+}
+
+.historyDeleteBtn {
+  flex-shrink: 0;
+  width: 1.75rem;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.historyDeleteBtn:hover {
+  color: #fff;
+  background: rgba(255, 80, 80, 0.35);
 }
 
 .userBlock {
