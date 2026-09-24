@@ -26,6 +26,12 @@
   color: var(--color-error);
 }
 
+.loadingHistory {
+  margin: 0.5rem 1.5rem 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted, #64748b);
+}
+
 .header {
   display: flex;
   align-items: flex-end;
