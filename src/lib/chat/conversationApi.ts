@@ -1,5 +1,5 @@
 import type { UIMessage } from "ai";
-import { stripToolRowsForTransport } from "@/lib/chat/stripToolRowsForTransport";
+import { slimMessagesForPersistence } from "@/lib/chat/stripToolRowsForTransport";
 import type {
   AppendMensajeInput,
   ConversationDetail,
@@ -255,9 +255,9 @@ export function extractTextFromUiMessage(message: UIMessage): string {
   return texts.join("\n").trim();
 }
 
-/** Serializa parts slim para PartsJson. */
+/** Serializa parts para historial (preview de tablas, sin dataset completo). */
 export function uiMessageToPartsJson(message: UIMessage): string {
-  const [slim] = stripToolRowsForTransport([message]);
+  const [slim] = slimMessagesForPersistence([message]);
   return JSON.stringify(slim?.parts ?? []);
 }
 
