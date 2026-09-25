@@ -22,16 +22,32 @@ function logArquitecturaLoaded(items: SpArquitectura[]): void {
   );
 }
 
+export type GetSpsArquitecturaOptions = {
+  /** Ignora el cache en memoria y vuelve a llamar a isg-api-pulso. */
+  force?: boolean;
+};
+
+/** Invalida el cache en memoria del catálogo (todas las sesiones o una clave). */
+export function invalidateSpsArquitecturaCache(sessionToken?: string | null): void {
+  if (sessionToken == null) {
+    cacheByToken.clear();
+    return;
+  }
+  cacheByToken.delete(sessionToken.slice(0, 24) || "default");
+}
+
 /**
  * Obtiene el catálogo de SPs con cache en memoria (respuesta slim del API).
+ * Pasá `{ force: true }` tras login o al refrescar el badge ERP.
  */
 export async function getSpsArquitecturaCached(
   sessionToken?: string | null,
+  options?: GetSpsArquitecturaOptions,
 ): Promise<SpArquitectura[]> {
   const cacheKey = sessionToken?.slice(0, 24) || "default";
   const hit = cacheByToken.get(cacheKey);
 
-  if (hit && hit.expiresAt > Date.now()) {
+  if (!options?.force && hit && hit.expiresAt > Date.now()) {
     return hit.items;
   }
 

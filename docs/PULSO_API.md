@@ -2,6 +2,8 @@
 
 Repositorio backend: [IntersistemasRcia/isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso) (rama `develop`)
 
+**Metadatos de SP (comentario `/*-- Pulso:`):** estándar canónico en [PULSO_SP_METADATA.md](./PULSO_SP_METADATA.md) — prefijo `sp_ISG_Vision_`, fechas `dd/MM/yyyy`, TIPO / PROPÓSITO / PARÁMETROS / INTERACCIÓN. El proxy `GET /api/pulso/arquitectura?refresh=1` (login y badge ERP) salta el cache de 5 min para ver SPs nuevos de inmediato.
+
 El front Next.js consume la API .NET vía `src/lib/pulso/`. Base URL típica:
 
 ```env

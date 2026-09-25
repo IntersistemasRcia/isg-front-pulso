@@ -1,0 +1,27 @@
+---
+description: Estándar de metadatos /*-- Pulso: */ en SP Vision y cómo el agente debe usarlos.
+globs: docs/PULSO*.md,src/lib/pulso/**/*,**/*Vision*.sql
+alwaysApply: false
+---
+
+# Metadatos Pulso (SP)
+
+Documento completo: [docs/PULSO_SP_METADATA.md](docs/PULSO_SP_METADATA.md).
+
+## Al documentar o crear un SP
+
+1. Nombre **obligatorio**: prefijo `sp_ISG_Vision_`.
+2. Comentario en el cuerpo: `/*-- Pulso: ... */` (o `-- Pulso:` si es trivial).
+3. Empezar con `TIPO:` (CATALOGO | INDICADOR | ANALISIS | INFORME | AUXILIAR).
+4. Incluir PROPÓSITO, USAR CUANDO; PARÁMETROS con obligatoriedad/defaults/enums.
+5. Fechas: documentar y asumir valores **`dd/MM/yyyy`**.
+6. INTERACCIÓN: qué preguntar; resolver nombres→ID con SP CATALOGO.
+7. Tope ~1000 caracteres; priorizar selección/ejecución sobre SQL interno.
+
+## Al tocar el agente (`systemPrompt` / tools)
+
+- El LLM elige la consulta por intención (PROPÓSITO / USAR CUANDO / NO USAR PARA), no por nombre técnico.
+- Reutilizar el mismo SP cambiando filtros/enums literales exactos.
+- No pedir códigos internos si hay catálogo.
+- No mencionar SP/SQL/parámetros técnicos al usuario final.
+- Un solo `buildPulsoSystemPrompt` aplica a todos los modelos.

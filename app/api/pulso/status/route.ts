@@ -55,8 +55,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Misma cache TTL que el chat (~5 min): evita refetch completo del catálogo cada poll.
-    const catalog = await getSpsArquitecturaCached(auth.token);
+    // Poll periódico usa cache (~5 min). ?refresh=1 (clic en el badge) fuerza GET a Pulso.
+    const force = request.nextUrl.searchParams.get("refresh") === "1";
+    const catalog = await getSpsArquitecturaCached(auth.token, { force });
 
     const count = catalog.length;
     return NextResponse.json({

@@ -25,10 +25,13 @@ export function PulsoStatusIndicator() {
   const [data, setData] = useState<PulsoStatusPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (sessionToken: string) => {
+  const load = useCallback(async (sessionToken: string, forceRefresh = false) => {
     setLoading(true);
     try {
-      const res = await authFetch("/api/pulso/status", {
+      const path = forceRefresh
+        ? "/api/pulso/status?refresh=1"
+        : "/api/pulso/status";
+      const res = await authFetch(path, {
         token: sessionToken,
         authRetries: 2,
       });
@@ -57,8 +60,9 @@ export function PulsoStatusIndicator() {
       return;
     }
 
-    void load(token);
-    const id = window.setInterval(() => void load(token), POLL_MS);
+    // Login / cambio de sesión: forzar catálogo fresco (SP nuevos).
+    void load(token, true);
+    const id = window.setInterval(() => void load(token, false), POLL_MS);
     return () => window.clearInterval(id);
   }, [authLoading, sessionReady, isAuthenticated, token, load]);
 
@@ -73,7 +77,7 @@ export function PulsoStatusIndicator() {
       type="button"
       className={styles.wrap}
       onClick={() => {
-        if (token) void load(token);
+        if (token) void load(token, true);
       }}
       title={detail}
       aria-label={`Estado ERP: ${label}. ${detail}`}

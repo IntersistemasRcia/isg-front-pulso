@@ -69,9 +69,12 @@ export function clearSpArquitecturaStorage(): void {
   }
 }
 
-/** Sincroniza SPs_arquitectura vía proxy Next.js y persiste en localStorage. */
+/**
+ * Sincroniza SPs_arquitectura vía proxy Next.js y persiste en localStorage.
+ * Usa `?refresh=1` para saltar el cache en memoria del servidor (SP nuevos al login).
+ */
 export async function syncSpArquitecturaFromApi(token: string): Promise<SpArquitecturaStored | null> {
-  const response = await authFetch("/api/pulso/arquitectura", {
+  const response = await authFetch("/api/pulso/arquitectura?refresh=1", {
     token,
     authRetries: 2,
   });
