@@ -2,18 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, isToolUIPart } from "ai";
+import { DefaultChatTransport, isToolUIPart, type UIMessage } from "ai";
 import { MessageList } from "@/components/chat/MessageList/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput/ChatInput";
 import { TypingIndicator } from "@/components/chat/TypingIndicator/TypingIndicator";
 import { ModelSelector } from "@/components/chat/ModelSelector/ModelSelector";
+import { ChatFaqModal } from "@/components/chat/ChatFaqModal/ChatFaqModal";
+import { useConversation } from "@/components/providers/ConversationProvider";
 import { DEFAULT_MODEL_ID, MODEL_STORAGE_KEY, normalizeModelId } from "@/lib/llm/registry";
 import {
   parsePulsoChatDebugHeaders,
   type PulsoChatDebugInfo,
 } from "@/lib/chat/parsePulsoChatHeaders";
 import { extractToolExecutionsFromParts } from "@/lib/chat/extractToolExecutions";
+import { stripToolRowsForTransport } from "@/lib/chat/stripToolRowsForTransport";
+import {
+  appendMessages,
+  createConversation,
+  extractTextFromUiMessage,
+  titleFromUserText,
+  uiMessageToPartsJson,
+} from "@/lib/chat/conversationApi";
 import { syncSpArquitecturaFromApi } from "@/lib/pulso/arquitecturaStorage";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { getStoredToken } from "@/utils/api";
 import { toUserMessage } from "@/utils/userFacingErrors";
 import styles from "./ChatPanel.module.css";
@@ -38,15 +49,35 @@ function readDebugEnabled(): boolean {
 }
 
 /**
- * Panel de chat: useChat + selector de modelo multi-LLM.
+ * Panel de chat: useChat + selector de modelo + persistencia historial Auth.
  */
 export function ChatPanel() {
+  const { token: authToken, sessionReady } = useAuth();
+  const {
+    activeId,
+    setActiveId,
+    pendingMessages,
+    clearPendingMessages,
+    notifyConversationUpdated,
+    historyAvailable,
+    loadingActive,
+    selectConversation,
+  } = useConversation();
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [debugInfo, setDebugInfo] = useState<PulsoChatDebugInfo | null>(null);
+  const [faqOpen, setFaqOpen] = useState(false);
   const debugInfoRef = useRef<(info: PulsoChatDebugInfo | null) => void>(() => {});
+
+  const activeIdRef = useRef<string | null>(activeId);
+  const persistedCountRef = useRef(0);
+  const nextOrdenRef = useRef(1);
+  const persistingRef = useRef(false);
+  const lastStatusRef = useRef<string>("ready");
+  const effectiveModelIdRef = useRef(modelId);
 
   useEffect(() => {
     setModelId(readStoredModelId());
@@ -57,14 +88,23 @@ export function ChatPanel() {
     debugInfoRef.current = setDebugInfo;
   }, []);
 
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  useEffect(() => {
+    effectiveModelIdRef.current = modelId;
+  }, [modelId]);
+
   /** Cache local de GET /SPs_arquitectura (nombres y tipos de parámetro por SP). */
   useEffect(() => {
-    const token = getStoredToken();
+    if (!sessionReady) return;
+    const token = authToken ?? getStoredToken();
     if (!token) return;
     void syncSpArquitecturaFromApi(token).catch(() => {
       // El chat sigue funcionando: el servidor refresca el catálogo en POST /api/chat.
     });
-  }, []);
+  }, [authToken, sessionReady]);
 
   function handleModelChange(nextId: string) {
     const normalized = normalizeModelId(nextId);
@@ -81,28 +121,85 @@ export function ChatPanel() {
       new DefaultChatTransport({
         api: "/api/chat",
         headers: (): Record<string, string> => {
-          const token = getStoredToken();
-          return token ? { Authorization: `Bearer ${token}` } : {};
+          const token = authToken ?? getStoredToken();
+          if (!token) return {};
+          return {
+            Authorization: `Bearer ${token}`,
+            "x-pulso-token": token,
+          };
         },
         body: { modelId },
+        prepareSendMessagesRequest: ({ messages, body, headers, credentials, api }) => ({
+          api,
+          headers,
+          credentials,
+          body: {
+            ...(body ?? {}),
+            messages: stripToolRowsForTransport(messages),
+          },
+        }),
         fetch: async (input, init) => {
-          const response = await fetch(input, init);
-          if (readDebugEnabled()) {
-            const info = parsePulsoChatDebugHeaders(response.headers);
-            if (info) debugInfoRef.current(info);
+          const token = authToken ?? getStoredToken();
+          const headers = new Headers(init?.headers);
+          if (token) {
+            if (!headers.has("Authorization")) {
+              headers.set("Authorization", `Bearer ${token}`);
+            }
+            if (!headers.has("x-pulso-token")) {
+              headers.set("x-pulso-token", token);
+            }
+          }
+          const response = await fetch(input, {
+            ...init,
+            headers,
+            credentials: "same-origin",
+          });
+          const info = parsePulsoChatDebugHeaders(response.headers);
+          if (info) {
+            if (readDebugEnabled()) debugInfoRef.current(info);
+            if (info.modelId) {
+              effectiveModelIdRef.current = normalizeModelId(info.modelId);
+            }
+          } else {
+            const mid = response.headers.get("X-Pulso-Model-Id");
+            if (mid?.trim()) {
+              effectiveModelIdRef.current = normalizeModelId(mid.trim());
+            }
           }
           return response;
         },
       }),
-    [modelId],
+    [modelId, authToken],
   );
 
-  const { messages, sendMessage, status, error, clearError } = useChat({
-    transport,
-    onError: (err) => {
-      console.error("[ChatPanel]", err);
-    },
-  });
+  const { messages, setMessages, sendMessage, status, error, clearError } =
+    useChat({
+      transport,
+      onError: (err) => {
+        console.error("[ChatPanel]", err);
+      },
+    });
+
+  /** Aplicar conversación cargada desde el sidebar. */
+  useEffect(() => {
+    if (pendingMessages == null) return;
+    setMessages(pendingMessages);
+    persistedCountRef.current = pendingMessages.length;
+    nextOrdenRef.current = pendingMessages.length + 1;
+    clearPendingMessages();
+  }, [pendingMessages, setMessages, clearPendingMessages]);
+
+  /** Si volvemos al chat con una conversación activa, recargar desde Auth. */
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    if (activeId && messages.length === 0 && pendingMessages == null) {
+      void selectConversation(activeId);
+    }
+    // Solo al montar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isBusy = status === "submitted" || status === "streaming";
 
@@ -113,7 +210,6 @@ export function ChatPanel() {
 
   const toolExecutions = useMemo(() => {
     if (!debugEnabled) return [];
-    // Todas las ejecuciones del último mensaje assistant (puede haber varias tools).
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const msg = messages[i];
       if (msg.role !== "assistant") continue;
@@ -142,9 +238,87 @@ export function ChatPanel() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, status]);
 
+  /** Persistir el último turno user+assistant cuando el stream termina. */
+  useEffect(() => {
+    const prev = lastStatusRef.current;
+    lastStatusRef.current = status;
+
+    const finishedTurn =
+      (prev === "streaming" || prev === "submitted") && status === "ready";
+    if (!finishedTurn || !historyAvailable) return;
+    if (persistingRef.current) return;
+
+    const token = authToken ?? getStoredToken();
+    if (!token) return;
+
+    const toPersist = messages.slice(persistedCountRef.current);
+    if (toPersist.length === 0) return;
+
+    const last = toPersist[toPersist.length - 1];
+    if (last?.role !== "assistant") return;
+
+    void (async () => {
+      persistingRef.current = true;
+      try {
+        let convId = activeIdRef.current;
+        if (!convId) {
+          const firstUser = toPersist.find((m) => m.role === "user");
+          const title = titleFromUserText(
+            firstUser ? extractTextFromUiMessage(firstUser) : "Nueva consulta",
+          );
+          convId = await createConversation(title, token);
+          activeIdRef.current = convId;
+          setActiveId(convId);
+        }
+
+        const modelForAssistant =
+          effectiveModelIdRef.current || modelId || DEFAULT_MODEL_ID;
+
+        let orden = nextOrdenRef.current;
+        const payload = toPersist.map((msg: UIMessage) => {
+          const role = msg.role === "user" ? "user" : "assistant";
+          const item = {
+            role: role as "user" | "assistant",
+            partsJson: uiMessageToPartsJson(msg),
+            modelId: role === "assistant" ? modelForAssistant : null,
+            orden,
+          };
+          orden += 1;
+          return item;
+        });
+
+        await appendMessages(convId, payload, token);
+        nextOrdenRef.current = orden;
+        persistedCountRef.current = messages.length;
+        notifyConversationUpdated();
+      } catch (err) {
+        console.warn("[ChatPanel] persist failed", err);
+      } finally {
+        persistingRef.current = false;
+      }
+    })();
+  }, [
+    status,
+    messages,
+    historyAvailable,
+    authToken,
+    modelId,
+    setActiveId,
+    notifyConversationUpdated,
+  ]);
+
   async function handleSubmit() {
     const text = input.trim();
     if (!text || isBusy) return;
+    clearError();
+    setInput("");
+    await sendMessage({ text });
+  }
+
+  async function handleFaqSelect(question: string) {
+    const text = question.trim();
+    if (!text || isBusy) return;
+    setFaqOpen(false);
     clearError();
     setInput("");
     await sendMessage({ text });
@@ -155,12 +329,24 @@ export function ChatPanel() {
   return (
     <div className={styles.chat}>
       <header className={styles.header}>
+        <button
+          type="button"
+          className={styles.helpBtn}
+          onClick={() => setFaqOpen(true)}
+          disabled={isBusy}
+        >
+          Ayuda
+        </button>
         <ModelSelector
           value={modelId}
           onChange={handleModelChange}
           disabled={isBusy}
         />
       </header>
+
+      {loadingActive ? (
+        <p className={styles.loadingHistory}>Cargando conversación…</p>
+      ) : null}
 
       {showDebug ? (
         <details className={styles.debugPanel} open>
@@ -228,6 +414,7 @@ export function ChatPanel() {
         messages={messages}
         bottomRef={bottomRef}
         streamingMessageId={streamingMessageId}
+        onOpenFaq={() => setFaqOpen(true)}
       />
 
       {isBusy ? <TypingIndicator label={getBusyLabel()} /> : null}
@@ -241,11 +428,20 @@ export function ChatPanel() {
 
       <ChatInput
         value={input}
-        disabled={isBusy}
+        disabled={isBusy || loadingActive}
         onChange={setInput}
         onSubmit={() => {
           void handleSubmit();
         }}
+      />
+
+      <ChatFaqModal
+        open={faqOpen}
+        onClose={() => setFaqOpen(false)}
+        onSelect={(q) => {
+          void handleFaqSelect(q);
+        }}
+        disabled={isBusy}
       />
     </div>
   );
