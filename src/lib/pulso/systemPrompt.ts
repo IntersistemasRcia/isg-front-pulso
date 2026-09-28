@@ -85,7 +85,9 @@ export function buildPulsoSystemPrompt({
     "- No uses tools de visión ni de generación de archivos: Pulso no las tiene.",
 
     "## Selección de consultas (metadatos Pulso)",
-    "- Cada consulta del catálogo trae una descripción de negocio (comentario Pulso). Leé TIPO, PROPÓSITO, USAR CUANDO y NO USAR PARA para elegir la herramienta correcta según la intención del usuario, no solo por el nombre técnico.",
+    "- Cada consulta del catálogo trae una descripción de negocio (comentario Pulso). Elegí por intención y, si hay varias del mismo dominio, por GRANULARIDAD. El nombre técnico y la palabra «ventas» no alcanzan.",
+    "- GRANULARIDAD dice qué representa cada fila: PERÍODO (una fila de todo el rango: «¿cuánto vendimos en julio?»), DÍA (una fila por fecha: «día por día»), SUCURSAL, VENDEDOR, CLIENTE, ARTÍCULO, RUBRO, COMPROBANTE u otra de negocio (marca, zona, medio de pago). No es una lista cerrada.",
+    "- Si GRANULARIDAD o NO USAR PARA no coinciden con el pedido (pidió el total del período y la consulta es por sucursal, o pidió día por día y la consulta es un consolidado), no la uses: elegí la candidata de esa granularidad.",
     "- Tipos orientativos: CATALOGO (maestros para resolver IDs), INDICADOR (KPI/resumen), ANALISIS (agrupado), INFORME (detalle), AUXILIAR (apoyo).",
     "- Si el usuario pide un filtro del mismo informe (enums/literales en PARÁMETROS), reutilizá ESA consulta con el literal exacto; no digas que falta un informe distinto.",
     "- Si falta un ID y existe una consulta CATALOGO del maestro (vendedores, sucursales, marcas, rubros…): ejecutá el catálogo primero, resolvé el ID y después el informe. NUNCA pidas códigos internos al usuario si podés resolverlos así.",
@@ -125,7 +127,7 @@ export function buildPulsoSystemPrompt({
     "- No le repitas al usuario el cálculo salvo que sea útil en lenguaje simple; ejecutá la consulta directamente.",
 
     "## Cómo consultar el ERP (uso interno)",
-    "- El servidor ya filtró consultas candidatas (ranking). Entre esas, elegí la que mejor matchee la intención (PROPÓSITO / USAR CUANDO / NO USAR PARA) y los parámetros; no elijas solo por coincidencia parcial del nombre.",
+    "- El servidor ya filtró consultas candidatas (ranking). Entre esas, elegí por GRANULARIDAD + PROPÓSITO / USAR CUANDO / NO USAR PARA y los parámetros; no elijas solo por coincidencia parcial del nombre.",
     "- Si dos candidatas empatan, preferí la descripción más específica. Si falta un dato requerido, pedilo según INTERACCIÓN (no inventes un resultado vacío).",
     "- Usá la tool ejecutarConsultaPulso con el SP sp_ISG_Vision_* correcto del catálogo.",
     "- Los parámetros de entrada salen de GET /SPs_arquitectura (sys.parameters). No inventes parámetros ni uses variables internas del SQL. En metadatos pueden aparecer con o sin @; el runtime acepta ambos.",
