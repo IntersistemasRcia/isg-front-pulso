@@ -1,106 +1,90 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Image from "next/image";
-import { Card, TextField } from "@/components/ui";
-import { MyButtons } from "@/utils/MyButtons";
 import { useAuth } from "@/components/providers/AuthProvider";
+import FormularioLogin from "./FormularioLogin";
 import styles from "./login.module.css";
 
-export default function LoginPage() {
-  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
-  const hardNavigatingRef = useRef(false);
+const VERSION_APP = "0.1.0";
 
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export default function LoginPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const hardNavigatingRef = useRef(false);
+  const anioActual = new Date().getFullYear();
 
   useEffect(() => {
     if (hardNavigatingRef.current) return;
     if (!authLoading && isAuthenticated) {
-      // Hard nav: cookie + LS listos para middleware y /api/* (evita 401 hasta F5).
       window.location.replace("/dashboard");
     }
   }, [authLoading, isAuthenticated]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    try {
-      await login({ username: username.trim(), password });
-      hardNavigatingRef.current = true;
-      // login() ya esperó /api/auth/session OK (headers + cookie listos).
-      window.location.assign("/dashboard");
-    } catch (err) {
-      const message =
-        (err as { response?: { data?: { message?: string } }; message?: string })
-          ?.response?.data?.message ||
-        (err as Error)?.message ||
-        "No se pudo iniciar sesión";
-      setError(message);
-      setLoading(false);
-    }
-  }
-
   return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <Card className={styles.card}>
-          <div className={styles.brand}>
+    <main className={styles.pagina}>
+      <Image
+        src="/login/FondoLogin.svg"
+        alt=""
+        fill
+        priority
+        unoptimized
+        className={styles.fondoDecorativo}
+      />
+
+      <div className={styles.contenido}>
+        <header className={styles.encabezado} />
+
+        <div className={styles.contenedor}>
+          <section className={styles.panelInformativo}>
             <Image
-              src="/logos/isg.png"
-              alt="isGestion"
-              width={320}
-              height={96}
+              src="/login/ISGLOGO2.png"
+              alt="interSistemas"
+              width={4076}
+              height={1542}
               priority
               className={styles.logo}
             />
-            <p className={styles.brandSub}>Pulso</p>
-          </div>
 
-          <form className={styles.form} onSubmit={handleSubmit} noValidate>
-            <TextField
-              label="Usuario"
-              name="username"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={loading}
-              required
+            <h2 className={styles.eslogan}>
+              <span className={styles.esloganPrincipal}>Consultá simple.</span>
+              <br />
+              <span className={styles.esloganAcento}>Decidí con datos.</span>
+            </h2>
+
+            <p className={styles.descripcion}>
+              Preguntá por ventas, clientes y finanzas del ERP y mirá el resultado en pantalla.
+            </p>
+
+            <Image
+              src="/login/ComputadoraLogin.png"
+              alt="Consulta de datos en computadora"
+              width={1536}
+              height={1024}
+              className={styles.imagenComputadora}
             />
-            <TextField
-              label="Contraseña"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-              required
+          </section>
+
+          <section className={styles.tarjetaFormulario}>
+            <FormularioLogin
+              onNavigate={() => {
+                hardNavigatingRef.current = true;
+              }}
             />
 
-            {error ? <div className={styles.error}>{error}</div> : null}
+            <div className={styles.divisor}>
+              <span />
+              <span className={styles.divisorTexto}>o</span>
+              <span />
+            </div>
 
-            <MyButtons
-              type="submit"
-              color="primary"
-              size="large"
-              fullWidth
-              className={styles.submit}
-              disabled={loading || !username || !password}
-            >
-              {loading ? "Ingresando…" : "Ingresar"}
-            </MyButtons>
-          </form>
+            <p className={styles.version}>Versión {VERSION_APP}</p>
 
-          <p className={styles.hint}>
-            Autenticación vía API Auth de la instancia.
-          </p>
-        </Card>
+            <p className={styles.copyright}>
+              © {anioActual} inter<strong>Sistemas</strong>. Todos los derechos reservados.
+            </p>
+          </section>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
