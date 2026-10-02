@@ -71,6 +71,8 @@ export default function FormularioLogin({ onNavigate }: FormularioLoginProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [mostrarContrasena, setMostrarContrasena] = useState(false);
+  const [recordarme, setRecordarme] = useState(false);
+  const [avisoOlvido, setAvisoOlvido] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,7 +98,11 @@ export default function FormularioLogin({ onNavigate }: FormularioLoginProps) {
 
   return (
     <form className={styles.formulario} onSubmit={handleSubmit} noValidate>
-      <h1 className={styles.titulo}>Bienvenido a Pulso</h1>
+      <h1 className={styles.tituloFormulario}>
+        Bienvenido a
+        <br />
+        ISG Pulso
+      </h1>
       <p className={styles.subtitulo}>Iniciá sesión para continuar</p>
 
       <label className={styles.etiqueta} htmlFor="usuario">
@@ -146,6 +152,29 @@ export default function FormularioLogin({ onNavigate }: FormularioLoginProps) {
         </button>
       </div>
 
+      <div className={styles.filaOpciones}>
+        <label className={styles.recordarme}>
+          <input
+            type="checkbox"
+            checked={recordarme}
+            onChange={(event) => setRecordarme(event.target.checked)}
+            disabled={loading}
+          />
+          Recordarme
+        </label>
+        <button
+          type="button"
+          className={styles.enlaceOlvido}
+          disabled={loading}
+          onClick={() =>
+            setAvisoOlvido("La recuperación de contraseña todavía no está habilitada.")
+          }
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
+      </div>
+
+      {avisoOlvido ? <p className={styles.avisoOlvido}>{avisoOlvido}</p> : null}
       {error ? <p className={styles.mensajeError}>{error}</p> : null}
 
       <button

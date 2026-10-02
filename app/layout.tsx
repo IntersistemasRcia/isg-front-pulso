@@ -18,6 +18,13 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "ISG Pulso",
   description: "Chatbot / IA para clientes ISG",
+  icons: {
+    icon: [
+      { url: "/logos/favicon.ico", sizes: "any" },
+      { url: "/logos/pulso-icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/logos/pulso-180.png",
+  },
 };
 
 export default function RootLayout({
