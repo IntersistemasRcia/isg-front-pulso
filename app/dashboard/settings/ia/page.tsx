@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, TextField } from "@/components/ui";
 import { MyButtons } from "@/utils/MyButtons";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { BYOK_PROVIDERS } from "@/lib/llm/registry";
 import type { ByokProviderId, ByokSettingsDto } from "@/lib/llm/types";
-import { getStoredToken } from "@/utils/api";
+import { authFetch } from "@/utils/api";
 import styles from "./page.module.css";
 
 type SettingsResponse = ByokSettingsDto & {
@@ -13,16 +14,9 @@ type SettingsResponse = ByokSettingsDto & {
   message?: string;
 };
 
-function authHeaders(): HeadersInit {
-  const token = getStoredToken();
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
 /** Configuración BYOK (Bring Your Own Key) para modelos premium. */
 export default function IaSettingsPage() {
+  const { token, isAuthenticated, isLoading: authLoading } = useAuth();
   const [settings, setSettings] = useState<SettingsResponse | null>(null);
   const [draftKeys, setDraftKeys] = useState<Record<ByokProviderId, string>>({
     openai: "",
@@ -35,12 +29,14 @@ export default function IaSettingsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/settings/ia", {
-        headers: authHeaders(),
-        cache: "no-store",
+      const res = await authFetch("/api/settings/ia", {
+        token,
+        authRetries: 2,
+        headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) {
         throw new Error("No se pudo cargar la configuración");
@@ -52,11 +48,17 @@ export default function IaSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated || !token) {
+      setLoading(false);
+      setError("Iniciá sesión para configurar la IA.");
+      return;
+    }
     void load();
-  }, [load]);
+  }, [authLoading, isAuthenticated, token, load]);
 
   async function saveProvider(provider: ByokProviderId) {
     const apiKey = draftKeys[provider].trim();
@@ -68,9 +70,10 @@ export default function IaSettingsPage() {
     setError(null);
     setFeedback(null);
     try {
-      const res = await fetch("/api/settings/ia", {
+      const res = await authFetch("/api/settings/ia", {
         method: "POST",
-        headers: authHeaders(),
+        token,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, apiKey }),
       });
       const data = (await res.json()) as SettingsResponse & { message?: string };
@@ -92,9 +95,10 @@ export default function IaSettingsPage() {
     setError(null);
     setFeedback(null);
     try {
-      const res = await fetch("/api/settings/ia", {
+      const res = await authFetch("/api/settings/ia", {
         method: "DELETE",
-        headers: authHeaders(),
+        token,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider }),
       });
       const data = (await res.json()) as SettingsResponse & { message?: string };
