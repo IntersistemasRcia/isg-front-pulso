@@ -65,6 +65,17 @@ export function DashboardSidebar() {
           Chat
         </Link>
         <Link
+          href="/dashboard/comercial"
+          className={[
+            styles.navItem,
+            pathname.startsWith("/dashboard/comercial") ? styles.navItemActive : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          Comercial
+        </Link>
+        <Link
           href="/dashboard/settings/ia"
           className={[
             styles.navItem,
