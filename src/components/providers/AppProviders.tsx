@@ -31,7 +31,7 @@ const theme = createTheme({
     },
   },
   typography: {
-    fontFamily: "var(--font-source-sans), 'Segoe UI', sans-serif",
+    fontFamily: "var(--font-sans)",
     button: {
       textTransform: "none",
       fontWeight: 600,
