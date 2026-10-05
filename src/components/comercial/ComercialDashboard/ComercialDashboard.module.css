@@ -166,6 +166,61 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  margin-bottom: 12px;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panelAside {
+  font-size: 12px;
+  font-weight: 700;
+  color: #545386;
+  white-space: nowrap;
+}
+
+.distribucion {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.distCard {
+  background: #f7f5fd;
+  border-radius: 10px;
+  padding: 16px 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.distCard span,
+.distCard small {
+  color: #697189;
+  font-size: 12px;
+}
+
+.distCard strong {
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.distNeta {
+  color: #545386;
+}
+
+.distIva {
+  color: #d75e00;
+}
+
+.distPercepciones {
+  color: #202847;
 }
 
 .panel {
@@ -173,10 +228,15 @@
   min-height: 220px;
 }
 
-.panelTitle {
+.panelHead .panelTitle,
+.panel > .panelTitle {
   margin-bottom: 12px;
   font-size: 15px;
   color: #202847;
+}
+
+.panelHead .panelTitle {
+  margin-bottom: 0;
 }
 
 .empty {
@@ -187,7 +247,8 @@
 
 @media (max-width: 980px) {
   .kpis,
-  .panels {
+  .panels,
+  .distribucion {
     grid-template-columns: 1fr;
   }
 

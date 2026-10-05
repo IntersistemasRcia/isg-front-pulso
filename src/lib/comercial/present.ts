@@ -101,3 +101,19 @@ export function mapSucursales(rows: ComercialRow[]): SucursalItem[] {
     participacion: asNumber(pickField(row, "ParticipacionPct")) ?? 0,
   }));
 }
+
+export function mapRubros(rows: ComercialRow[]): SucursalItem[] {
+  return [...rows]
+    .sort((a, b) => (asNumber(pickField(b, "VentaNeta")) ?? 0) - (asNumber(pickField(a, "VentaNeta")) ?? 0))
+    .slice(0, 5)
+    .map((row, index) => ({
+      sucursal: String(
+        pickField(row, "Rubro") ??
+          pickField(row, "Descripcion") ??
+          pickField(row, "DESCRIPCION") ??
+          `Rubro ${index + 1}`,
+      ),
+      importe: asNumber(pickField(row, "VentaNeta")) ?? 0,
+      participacion: asNumber(pickField(row, "ParticipacionPct")) ?? 0,
+    }));
+}

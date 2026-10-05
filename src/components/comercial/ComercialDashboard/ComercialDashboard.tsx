@@ -14,7 +14,7 @@ import {
   type DateRange,
   type PeriodPreset,
 } from "@/lib/comercial/period";
-import { mapMediosPago, mapSucursales, mapVentasKpis } from "@/lib/comercial/present";
+import { mapMediosPago, mapRubros, mapSucursales, mapVentasKpis, formatMoney, pickField } from "@/lib/comercial/present";
 import styles from "./ComercialDashboard.module.css";
 
 export function ComercialDashboard() {
@@ -80,6 +80,7 @@ export function ComercialDashboard() {
   const kpis = mapVentasKpis(data?.ventas ?? null);
   const medios = mapMediosPago(data?.medios ?? []);
   const sucursales = mapSucursales(data?.sucursales ?? []);
+  const rubros = mapRubros(data?.rubros ?? []);
 
   return (
     <section className={styles.page}>
@@ -182,6 +183,51 @@ export function ComercialDashboard() {
             <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
           ) : (
             <SucursalBars items={sucursales} />
+          )}
+        </article>
+      </div>
+
+      <div className={styles.panels}>
+        <article className={styles.panel}>
+          <h2 className={styles.panelTitle}>Ventas por Rubro · Top 5 por Venta Neta</h2>
+          {data?.errors.rubros ? (
+            <p className={styles.empty}>{data.errors.rubros}</p>
+          ) : rubros.length === 0 ? (
+            <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
+          ) : (
+            <SucursalBars items={rubros} />
+          )}
+        </article>
+
+        <article className={styles.panel}>
+          <div className={styles.panelHead}>
+            <h2 className={styles.panelTitle}>Distribución de la Venta</h2>
+            <span className={styles.panelAside}>Resumen comercial</span>
+          </div>
+          {data?.errors.ventas ? (
+            <p className={styles.empty}>{data.errors.ventas}</p>
+          ) : (
+            <div className={styles.distribucion}>
+              <article className={styles.distCard}>
+                <span>Venta Neta</span>
+                <strong className={styles.distNeta}>
+                  {formatMoney(pickField(data?.ventas, "VentasNetas"))}
+                </strong>
+                <small>Sin impuestos</small>
+              </article>
+              <article className={styles.distCard}>
+                <span>IVA</span>
+                <strong className={styles.distIva}>{formatMoney(pickField(data?.ventas, "IVA"))}</strong>
+                <small>Componente de la venta</small>
+              </article>
+              <article className={styles.distCard}>
+                <span>Percepciones</span>
+                <strong className={styles.distPercepciones}>
+                  {formatMoney(pickField(data?.ventas, "Percepciones"))}
+                </strong>
+                <small>Componente de la venta</small>
+              </article>
+            </div>
           )}
         </article>
       </div>
