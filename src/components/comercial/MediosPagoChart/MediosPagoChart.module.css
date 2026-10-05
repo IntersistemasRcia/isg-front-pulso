@@ -1,0 +1,85 @@
+.layout {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.donut {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  flex: none;
+}
+
+.center {
+  position: absolute;
+  inset: 28%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #202847;
+  pointer-events: none;
+  line-height: 1.2;
+}
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.legendRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid #f0f1f6;
+  font-size: 12px;
+}
+
+.legendRow:last-child {
+  border-bottom: 0;
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #202847;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.amount {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pct {
+  width: 52px;
+  text-align: right;
+  color: #697189;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .legend {
+    width: 100%;
+  }
+}

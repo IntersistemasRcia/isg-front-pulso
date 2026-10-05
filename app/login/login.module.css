@@ -6,16 +6,31 @@
   --line: #e0e3ee;
   --bg: #f7f7fc;
 
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
   grid-template-columns: minmax(0, 48%) minmax(0, 52%);
   color: var(--ink);
   font-family: Verdana, Arial, sans-serif;
-  background: var(--bg) url("/login/login-visual-background.png") center / cover no-repeat;
+  background-color: #fbfaff;
+}
+
+/* El SVG es más alto que ancho. 72% lo deja cubriendo la pantalla
+   y baja el arco violeta para que no tape el texto. */
+.pagina::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: url("/login/login-visual-background.svg") left 72% / cover no-repeat;
 }
 
 .panel {
+  position: relative;
+  z-index: 1;
   padding: 48px 7% 36px;
   display: flex;
   flex-direction: column;
@@ -94,6 +109,7 @@
 
 .pilar span:last-child {
   color: #5e6783;
+  text-shadow: 0 0 8px #fff, 0 0 2px #fff;
 }
 
 .pilarIcono {
@@ -120,9 +136,13 @@
 }
 
 .pieProducto {
+  align-self: flex-start;
   margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
   font-size: 13px;
   color: var(--ink);
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .pieProducto strong {
@@ -130,6 +150,8 @@
 }
 
 .columnaFormulario {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
   padding: 40px 6%;
