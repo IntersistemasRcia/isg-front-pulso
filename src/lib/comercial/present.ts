@@ -79,7 +79,7 @@ function toneOf(delta: number): KpiDelta["tone"] {
   return "flat";
 }
 
-function formatSigned(delta: number, suffix: "%" | "pp"): string {
+function formatSigned(delta: number, suffix: "%"): string {
   const sign = delta > 0 ? "+" : delta < 0 ? "-" : "";
   return `${sign}${percent.format(Math.abs(delta))} ${suffix}`;
 }
@@ -97,7 +97,7 @@ function pointsDelta(current: unknown, previous: unknown): KpiDelta | null {
   const base = percentPoints(previous);
   if (actual == null || base == null) return null;
   const delta = actual - base;
-  return { text: formatSigned(delta, "pp"), tone: toneOf(delta) };
+  return { text: formatSigned(delta, "%"), tone: toneOf(delta) };
 }
 
 export function mapVentasKpis(
