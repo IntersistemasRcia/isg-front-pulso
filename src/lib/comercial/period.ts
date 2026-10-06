@@ -56,6 +56,56 @@ export function rangeForPreset(
   };
 }
 
+function addDays(date: Date, days: number): Date {
+  const next = startOfDay(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function inclusiveDayCount(range: DateRange): number {
+  const desde = startOfDay(range.desde).getTime();
+  const hasta = startOfDay(range.hasta).getTime();
+  return Math.round((hasta - desde) / 86_400_000) + 1;
+}
+
+/** Mueve la fecha N meses y, si el día no existe, usa el último del mes destino. */
+function shiftMonths(date: Date, months: number): Date {
+  const source = startOfDay(date);
+  const first = new Date(source.getFullYear(), source.getMonth() + months, 1);
+  const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  return new Date(first.getFullYear(), first.getMonth(), Math.min(source.getDate(), lastDay));
+}
+
+/**
+ * Período contra el que se compara el rango elegido.
+ * Hoy, Ayer, 7 días y Personalizado: la ventana inmediata anterior, misma cantidad de días.
+ * Este mes: el mismo tramo un mes atrás.
+ * Mes anterior: el mes calendario completo previo.
+ */
+export function previousRange(range: DateRange, preset: PeriodPreset): DateRange {
+  if (preset === "esteMes") {
+    return {
+      desde: shiftMonths(range.desde, -1),
+      hasta: shiftMonths(range.hasta, -1),
+    };
+  }
+
+  if (preset === "mesAnterior") {
+    const source = startOfDay(range.desde);
+    return {
+      desde: new Date(source.getFullYear(), source.getMonth() - 1, 1),
+      hasta: new Date(source.getFullYear(), source.getMonth(), 0),
+    };
+  }
+
+  const count = Math.max(1, inclusiveDayCount(range));
+  const hasta = addDays(range.desde, -1);
+  return {
+    desde: addDays(hasta, -(count - 1)),
+    hasta,
+  };
+}
+
 export function formatPulsoDay(date: Date): string {
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");

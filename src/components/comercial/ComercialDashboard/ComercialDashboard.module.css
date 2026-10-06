@@ -7,22 +7,6 @@
   color: #202847;
 }
 
-.heading {
-  margin-bottom: 16px;
-}
-
-.title {
-  margin: 0 0 4px;
-  font-size: 25px;
-  font-weight: 700;
-}
-
-.subtitle {
-  margin: 0;
-  color: #697189;
-  font-size: 13px;
-}
-
 .filters {
   display: flex;
   align-items: flex-end;
@@ -162,6 +146,28 @@
   line-height: 1.1;
 }
 
+.cardFoot {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #697189;
+}
+
+.deltaUp {
+  color: #16834c;
+  font-weight: 700;
+}
+
+.deltaDown {
+  color: #bc4051;
+  font-weight: 700;
+}
+
+.deltaFlat {
+  color: #697189;
+  font-weight: 700;
+}
+
 .panels {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -260,10 +266,6 @@
 @media (max-width: 640px) {
   .page {
     padding: 16px;
-  }
-
-  .title {
-    font-size: 22px;
   }
 
   .pills {

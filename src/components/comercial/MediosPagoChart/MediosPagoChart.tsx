@@ -22,7 +22,7 @@ export function MediosPagoChart({ items }: MediosPagoChartProps) {
               data={items}
               dataKey="importe"
               nameKey="medio"
-              innerRadius="62%"
+              innerRadius="74%"
               outerRadius="88%"
               paddingAngle={1.5}
               stroke="#fff"

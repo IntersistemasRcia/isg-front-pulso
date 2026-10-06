@@ -1,5 +1,5 @@
 import { authFetch } from "@/utils/api";
-import { formatPulsoDay, type DateRange } from "@/lib/comercial/period";
+import { formatPulsoDay, previousRange, type DateRange, type PeriodPreset } from "@/lib/comercial/period";
 
 export type ComercialRow = Record<string, unknown>;
 
@@ -40,11 +40,13 @@ async function ejecutarSp(
 
 export type ComercialSnapshot = {
   ventas: ComercialRow | null;
+  ventasAnterior: ComercialRow | null;
   medios: ComercialRow[];
   sucursales: ComercialRow[];
   rubros: ComercialRow[];
   errors: {
     ventas?: string;
+    ventasAnterior?: string;
     medios?: string;
     sucursales?: string;
     rubros?: string;
@@ -57,12 +59,18 @@ function messageOf(error: unknown): string {
 
 export async function loadComercial(
   range: DateRange,
+  preset: PeriodPreset,
   token: string,
   signal?: AbortSignal,
 ): Promise<ComercialSnapshot> {
+  const anterior = previousRange(range, preset);
   const diario = {
     DesdeFecha: formatPulsoDay(range.desde),
     HastaFecha: formatPulsoDay(range.hasta),
+  };
+  const diarioAnterior = {
+    DesdeFecha: formatPulsoDay(anterior.desde),
+    HastaFecha: formatPulsoDay(anterior.hasta),
   };
   const dash = {
     FechaDesde: formatPulsoDay(range.desde),
@@ -74,20 +82,26 @@ export async function loadComercial(
     Top: 5,
   };
 
-  const [ventasResult, mediosResult, sucursalesResult, rubrosResult] = await Promise.allSettled([
-    ejecutarSp(VENTAS_DIARIAS, diario, token, signal),
-    ejecutarSp(MEDIOS_PAGO, dash, token, signal),
-    ejecutarSp(POR_SUCURSAL, dash, token, signal),
-    ejecutarSp(POR_RUBRO, rubro, token, signal),
-  ]);
+  const [ventasResult, anteriorResult, mediosResult, sucursalesResult, rubrosResult] =
+    await Promise.allSettled([
+      ejecutarSp(VENTAS_DIARIAS, diario, token, signal),
+      ejecutarSp(VENTAS_DIARIAS, diarioAnterior, token, signal),
+      ejecutarSp(MEDIOS_PAGO, dash, token, signal),
+      ejecutarSp(POR_SUCURSAL, dash, token, signal),
+      ejecutarSp(POR_RUBRO, rubro, token, signal),
+    ]);
 
   return {
     ventas: ventasResult.status === "fulfilled" ? ventasResult.value[0] ?? null : null,
+    ventasAnterior: anteriorResult.status === "fulfilled" ? anteriorResult.value[0] ?? null : null,
     medios: mediosResult.status === "fulfilled" ? mediosResult.value : [],
     sucursales: sucursalesResult.status === "fulfilled" ? sucursalesResult.value : [],
     rubros: rubrosResult.status === "fulfilled" ? rubrosResult.value : [],
     errors: {
       ...(ventasResult.status === "rejected" ? { ventas: messageOf(ventasResult.reason) } : {}),
+      ...(anteriorResult.status === "rejected"
+        ? { ventasAnterior: messageOf(anteriorResult.reason) }
+        : {}),
       ...(mediosResult.status === "rejected" ? { medios: messageOf(mediosResult.reason) } : {}),
       ...(sucursalesResult.status === "rejected" ? { sucursales: messageOf(sucursalesResult.reason) } : {}),
       ...(rubrosResult.status === "rejected" ? { rubros: messageOf(rubrosResult.reason) } : {}),

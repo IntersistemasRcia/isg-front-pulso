@@ -14,15 +14,16 @@
 
 .center {
   position: absolute;
-  inset: 28%;
+  inset: 18%;
   display: grid;
   place-items: center;
   text-align: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: #202847;
   pointer-events: none;
-  line-height: 1.2;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .legend {
