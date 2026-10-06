@@ -120,7 +120,6 @@ export default function IaSettingsPage() {
   return (
     <div className={styles.page}>
       <header className={styles.pageHeader}>
-        <h1 className={styles.title}>Configuración IA</h1>
         <p className={styles.lead}>
           Los modelos gratuitos usan las claves del despliegue. Para premium puede
           usar las claves de su empresa (variables de entorno) o registrar sus

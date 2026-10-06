@@ -52,22 +52,114 @@ export function formatPercent(value: unknown): string {
   return `${percent.format(points)} %`;
 }
 
+export type KpiDelta = {
+  text: string;
+  tone: "up" | "down" | "flat";
+};
+
 export type KpiCard = {
   id: string;
   label: string;
   value: string;
+  caption: string;
+  delta: KpiDelta | null;
 };
 
-export function mapVentasKpis(row: ComercialRow | null): KpiCard[] {
+const NO_PREVIOUS = "sin datos de periodos anteriores";
+
+function percentPoints(value: unknown): number | null {
+  const amount = asNumber(value);
+  if (amount == null) return null;
+  return Math.abs(amount) <= 1.5 ? amount * 100 : amount;
+}
+
+function toneOf(delta: number): KpiDelta["tone"] {
+  if (delta > 0) return "up";
+  if (delta < 0) return "down";
+  return "flat";
+}
+
+function formatSigned(delta: number, suffix: "%" | "pp"): string {
+  const sign = delta > 0 ? "+" : delta < 0 ? "-" : "";
+  return `${sign}${percent.format(Math.abs(delta))} ${suffix}`;
+}
+
+function ratioDelta(current: unknown, previous: unknown): KpiDelta | null {
+  const actual = asNumber(current);
+  const base = asNumber(previous);
+  if (actual == null || base == null || base === 0) return null;
+  const delta = ((actual - base) / Math.abs(base)) * 100;
+  return { text: formatSigned(delta, "%"), tone: toneOf(delta) };
+}
+
+function pointsDelta(current: unknown, previous: unknown): KpiDelta | null {
+  const actual = percentPoints(current);
+  const base = percentPoints(previous);
+  if (actual == null || base == null) return null;
+  const delta = actual - base;
+  return { text: formatSigned(delta, "pp"), tone: toneOf(delta) };
+}
+
+export function mapVentasKpis(
+  row: ComercialRow | null,
+  previous: ComercialRow | null,
+): KpiCard[] {
+  const comparable = previous != null;
+  const delta = (currentField: string, previousField: string, kind: "ratio" | "points") => {
+    if (!comparable) return null;
+    return kind === "points"
+      ? pointsDelta(pickField(row, currentField), pickField(previous, previousField))
+      : ratioDelta(pickField(row, currentField), pickField(previous, previousField));
+  };
+  const margen = formatMoney(pickField(row, "Margen"));
+
   return [
-    { id: "netas", label: "Ventas Netas", value: formatMoney(pickField(row, "VentasNetas")) },
-    { id: "totales", label: "Ventas Totales", value: formatMoney(pickField(row, "TotalFacturado")) },
-    { id: "comprobantes", label: "Comprobantes", value: formatCount(pickField(row, "CantComprobantes")) },
-    { id: "unidades", label: "Unidades Vendidas", value: formatCount(pickField(row, "UnidadesVendidas")) },
-    { id: "ticket", label: "Ticket Promedio", value: formatMoney(pickField(row, "TicketComercial")) },
-    { id: "margen", label: "Margen Bruto", value: formatPercent(pickField(row, "MargenPorcentaje")) },
+    {
+      id: "netas",
+      label: "Ventas Netas",
+      value: formatMoney(pickField(row, "VentasNetas")),
+      caption: "Importe sin impuestos",
+      delta: delta("VentasNetas", "VentasNetas", "ratio"),
+    },
+    {
+      id: "totales",
+      label: "Ventas Totales",
+      value: formatMoney(pickField(row, "TotalFacturado")),
+      caption: "Importe final con impuestos",
+      delta: delta("TotalFacturado", "TotalFacturado", "ratio"),
+    },
+    {
+      id: "comprobantes",
+      label: "Comprobantes",
+      value: formatCount(pickField(row, "CantComprobantes")),
+      caption: "Operaciones",
+      delta: delta("CantComprobantes", "CantComprobantes", "ratio"),
+    },
+    {
+      id: "unidades",
+      label: "Unidades Vendidas",
+      value: formatCount(pickField(row, "UnidadesVendidas")),
+      caption: "Unidades comercializadas",
+      delta: delta("UnidadesVendidas", "UnidadesVendidas", "ratio"),
+    },
+    {
+      id: "ticket",
+      label: "Ticket Promedio",
+      value: formatMoney(pickField(row, "TicketComercial")),
+      caption: "Promedio sin impuestos",
+      delta: delta("TicketComercial", "TicketComercial", "ratio"),
+    },
+    {
+      id: "margen",
+      label: "Margen Bruto",
+      value: formatPercent(pickField(row, "MargenPorcentaje")),
+      caption: margen === "—" ? "Margen monetario" : `Margen monetario ${margen}`,
+      delta: delta("MargenPorcentaje", "MargenPorcentaje", "points"),
+    },
   ];
 }
+
+export { NO_PREVIOUS };
 
 export type MedioPagoItem = {
   medio: string;

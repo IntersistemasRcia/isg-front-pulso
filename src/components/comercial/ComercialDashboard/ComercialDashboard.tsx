@@ -14,7 +14,7 @@ import {
   type DateRange,
   type PeriodPreset,
 } from "@/lib/comercial/period";
-import { mapMediosPago, mapRubros, mapSucursales, mapVentasKpis, formatMoney, pickField } from "@/lib/comercial/present";
+import { mapMediosPago, mapRubros, mapSucursales, mapVentasKpis, formatMoney, pickField, NO_PREVIOUS } from "@/lib/comercial/present";
 import styles from "./ComercialDashboard.module.css";
 
 export function ComercialDashboard() {
@@ -28,12 +28,12 @@ export function ComercialDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
-    async (next: DateRange, signal?: AbortSignal) => {
+    async (next: DateRange, nextPreset: PeriodPreset, signal?: AbortSignal) => {
       if (!token) return;
       setLoading(true);
       setError(null);
       try {
-        const snapshot = await loadComercial(next, token, signal);
+        const snapshot = await loadComercial(next, nextPreset, token, signal);
         if (signal?.aborted) return;
         setData(snapshot);
         setRange(next);
@@ -50,7 +50,7 @@ export function ComercialDashboard() {
   useEffect(() => {
     const initial = rangeForPreset("esteMes");
     const controller = new AbortController();
-    void load(initial, controller.signal);
+    void load(initial, "esteMes", controller.signal);
     return () => controller.abort();
   }, [load]);
 
@@ -59,7 +59,7 @@ export function ComercialDashboard() {
     setPreset(next);
     setCustomDesde(toDateInputValue(period.desde));
     setCustomHasta(toDateInputValue(period.hasta));
-    void load(period);
+    void load(period, next);
   }
 
   function applyCustom() {
@@ -74,23 +74,21 @@ export function ComercialDashboard() {
       return;
     }
     setPreset("personalizado");
-    void load({ desde, hasta });
+    void load({ desde, hasta }, "personalizado");
   }
 
-  const kpis = mapVentasKpis(data?.ventas ?? null);
+  const deltaTone = {
+    up: styles.deltaUp,
+    down: styles.deltaDown,
+    flat: styles.deltaFlat,
+  };
+  const kpis = mapVentasKpis(data?.ventas ?? null, data?.ventasAnterior ?? null);
   const medios = mapMediosPago(data?.medios ?? []);
   const sucursales = mapSucursales(data?.sucursales ?? []);
   const rubros = mapRubros(data?.rubros ?? []);
 
   return (
     <section className={styles.page}>
-      <header className={styles.heading}>
-        <div>
-          <h1 className={styles.title}>Dashboard Comercial</h1>
-          <p className={styles.subtitle}>Visión general de tu negocio en el período seleccionado</p>
-        </div>
-      </header>
-
       <div className={styles.filters}>
         <div className={styles.field}>
           <span className={styles.fieldLabel}>Período</span>
@@ -140,7 +138,7 @@ export function ComercialDashboard() {
 
         <button type="button" className={styles.refresh} onClick={() => {
           if (preset === "personalizado") applyCustom();
-          else void load(range);
+          else void load(range, preset);
         }}>
           Actualizar
         </button>
@@ -159,6 +157,20 @@ export function ComercialDashboard() {
           <article key={kpi.id} className={styles.card}>
             <h2 className={styles.cardLabel}>{kpi.label}</h2>
             <p className={styles.cardValue}>{loading && !data ? "…" : kpi.value}</p>
+            {data ? (
+              <p className={styles.cardFoot}>
+                <span>{kpi.caption}</span>
+                {kpi.delta ? (
+                  <>
+                    {" · "}
+                    <span className={deltaTone[kpi.delta.tone]}>{kpi.delta.text}</span>
+                    {" vs. período comparable anterior"}
+                  </>
+                ) : (
+                  ` · ${NO_PREVIOUS}`
+                )}
+              </p>
+            ) : null}
           </article>
         ))}
       </div>

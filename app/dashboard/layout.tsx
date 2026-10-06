@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { DashboardSidebar } from "@/components/layout/DashboardSidebar/DashboardSidebar";
 import { DashboardHeader } from "@/components/layout/DashboardHeader/DashboardHeader";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ConversationProvider } from "@/components/providers/ConversationProvider";
 import styles from "./dashboard.module.css";
+
+function moduleTitle(pathname: string): string {
+  if (pathname.startsWith("/dashboard/comercial")) return "Dashboard Comercial";
+  if (pathname.startsWith("/dashboard/settings/ia")) return "Configuración IA";
+  return "Chat";
+}
 
 export default function DashboardLayout({
   children,
@@ -14,7 +20,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { user, token, isAuthenticated, isLoading, sessionReady } = useAuth();
+  const pathname = usePathname();
+  const { token, isAuthenticated, isLoading, sessionReady } = useAuth();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -31,7 +38,7 @@ export default function DashboardLayout({
       <div className={styles.shell}>
         <DashboardSidebar />
         <div className={styles.mainColumn}>
-          <DashboardHeader title={user?.companyName || "Dashboard"} />
+          <DashboardHeader title={moduleTitle(pathname)} />
           <main className={styles.content}>{children}</main>
         </div>
       </div>
