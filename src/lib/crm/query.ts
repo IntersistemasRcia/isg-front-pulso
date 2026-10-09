@@ -20,6 +20,8 @@ export type CatalogOption = {
 const RESUMEN = "sp_ISG_Vision_CRM_Visual_ResumenComercial";
 const EVOLUCION = "sp_ISG_Vision_CRM_Visual_Ventas_Evolucion";
 const POR_ZONA = "sp_ISG_Vision_CRM_Visual_Ventas_PorZona";
+const POR_CLASIFICACION = "sp_ISG_Vision_CRM_Visual_Ventas_PorClasificacion";
+const POR_CONDICION_IVA = "sp_ISG_Vision_CRM_Visual_Ventas_PorCondicionIVA";
 const CATALOGO_ZONAS = "sp_ISG_Vision_Catalogo_Zonas";
 const CATALOGO_VENDEDORES = "sp_ISG_Vision_Catalogo_Vendedores";
 
@@ -72,10 +74,14 @@ export type CrmSnapshot = {
   resumen: CrmRow | null;
   evolucion: CrmRow[];
   zonas: CrmRow[];
+  clasificaciones: CrmRow[];
+  condicionesIva: CrmRow[];
   errors: {
     resumen?: string;
     evolucion?: string;
     zonas?: string;
+    clasificaciones?: string;
+    condicionesIva?: string;
   };
 };
 
@@ -85,20 +91,29 @@ export async function loadCrm(
   signal?: AbortSignal,
 ): Promise<CrmSnapshot> {
   const parametros = crmParametros(filters);
-  const [resumenResult, evolucionResult, zonasResult] = await Promise.allSettled([
-    ejecutarSp(RESUMEN, parametros, token, signal),
-    ejecutarSp(EVOLUCION, parametros, token, signal),
-    ejecutarSp(POR_ZONA, parametros, token, signal),
-  ]);
+  const [resumenResult, evolucionResult, zonasResult, clasificacionResult, ivaResult] =
+    await Promise.allSettled([
+      ejecutarSp(RESUMEN, parametros, token, signal),
+      ejecutarSp(EVOLUCION, parametros, token, signal),
+      ejecutarSp(POR_ZONA, parametros, token, signal),
+      ejecutarSp(POR_CLASIFICACION, parametros, token, signal),
+      ejecutarSp(POR_CONDICION_IVA, parametros, token, signal),
+    ]);
 
   return {
     resumen: resumenResult.status === "fulfilled" ? resumenResult.value[0] ?? null : null,
     evolucion: evolucionResult.status === "fulfilled" ? evolucionResult.value : [],
     zonas: zonasResult.status === "fulfilled" ? zonasResult.value : [],
+    clasificaciones: clasificacionResult.status === "fulfilled" ? clasificacionResult.value : [],
+    condicionesIva: ivaResult.status === "fulfilled" ? ivaResult.value : [],
     errors: {
       ...(resumenResult.status === "rejected" ? { resumen: messageOf(resumenResult.reason) } : {}),
       ...(evolucionResult.status === "rejected" ? { evolucion: messageOf(evolucionResult.reason) } : {}),
       ...(zonasResult.status === "rejected" ? { zonas: messageOf(zonasResult.reason) } : {}),
+      ...(clasificacionResult.status === "rejected"
+        ? { clasificaciones: messageOf(clasificacionResult.reason) }
+        : {}),
+      ...(ivaResult.status === "rejected" ? { condicionesIva: messageOf(ivaResult.reason) } : {}),
     },
   };
 }

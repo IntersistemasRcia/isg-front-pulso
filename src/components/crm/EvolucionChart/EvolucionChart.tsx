@@ -31,15 +31,15 @@ export function EvolucionChart({ points }: EvolucionChartProps) {
           <Line
             type="monotone"
             dataKey="venta"
-            name="Venta comercial"
-            stroke="#545386"
+            name="Facturado Neto"
+            stroke="#5e90e8"
             strokeWidth={2}
             dot={false}
           />
           <Line
             type="monotone"
             dataKey="pedidos"
-            name="Pedidos y débitos internos"
+            name="Pedidos en Cuenta"
             stroke="#d75e00"
             strokeWidth={2}
             dot={false}
