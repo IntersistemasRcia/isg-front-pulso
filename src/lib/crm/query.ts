@@ -17,9 +17,9 @@ export type CatalogOption = {
   label: string;
 };
 
-const RESUMEN = "sp_ISG_CRM_Visual_ResumenComercial";
-const EVOLUCION = "sp_ISG_CRM_Visual_Ventas_Evolucion";
-const POR_ZONA = "sp_ISG_CRM_Visual_Ventas_PorZona";
+const RESUMEN = "sp_ISG_Vision_CRM_Visual_ResumenComercial";
+const EVOLUCION = "sp_ISG_Vision_CRM_Visual_Ventas_Evolucion";
+const POR_ZONA = "sp_ISG_Vision_CRM_Visual_Ventas_PorZona";
 const CATALOGO_ZONAS = "sp_ISG_Vision_Catalogo_Zonas";
 const CATALOGO_VENDEDORES = "sp_ISG_Vision_Catalogo_Vendedores";
 
