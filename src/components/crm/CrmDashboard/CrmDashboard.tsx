@@ -12,7 +12,7 @@ import {
   type CrmFilters,
   type CrmSnapshot,
 } from "@/lib/crm/query";
-import { mapEvolucion, mapResumenKpis, mapZonas } from "@/lib/crm/present";
+import { mapClasificaciones, mapCondicionesIva, mapEvolucion, mapResumenKpis, mapZonas } from "@/lib/crm/present";
 import {
   formatPeriodLabel,
   parseDateInput,
@@ -141,6 +141,8 @@ export function CrmDashboard() {
   };
   const evolucion = mapEvolucion(data?.evolucion ?? []);
   const zonasVenta = mapZonas(data?.zonas ?? []);
+  const clasificaciones = mapClasificaciones(data?.clasificaciones ?? []);
+  const condicionesIva = mapCondicionesIva(data?.condicionesIva ?? []);
 
   return (
     <section className={styles.page}>
@@ -301,6 +303,30 @@ export function CrmDashboard() {
             <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
           ) : (
             <ZonaBars items={zonasVenta} />
+          )}
+        </article>
+      </div>
+
+      <div className={`${styles.panels} ${styles.panelsEqual}`}>
+        <article className={styles.panel}>
+          <h2 className={styles.panelTitle}>Venta por clasificación de cliente</h2>
+          {data?.errors.clasificaciones ? (
+            <p className={styles.empty}>{data.errors.clasificaciones}</p>
+          ) : clasificaciones.length === 0 ? (
+            <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
+          ) : (
+            <ZonaBars items={clasificaciones} />
+          )}
+        </article>
+
+        <article className={styles.panel}>
+          <h2 className={styles.panelTitle}>Venta por condición de IVA</h2>
+          {data?.errors.condicionesIva ? (
+            <p className={styles.empty}>{data.errors.condicionesIva}</p>
+          ) : condicionesIva.length === 0 ? (
+            <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
+          ) : (
+            <ZonaBars items={condicionesIva} />
           )}
         </article>
       </div>

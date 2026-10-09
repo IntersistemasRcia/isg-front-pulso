@@ -71,8 +71,20 @@ export type ZonaItem = {
 };
 
 export function mapZonas(rows: CrmRow[]): ZonaItem[] {
+  return mapImporteBarras(rows, "Zona", "Zona");
+}
+
+export function mapClasificaciones(rows: CrmRow[]): ZonaItem[] {
+  return mapImporteBarras(rows, "ClasificacionCliente", "Clasificación");
+}
+
+export function mapCondicionesIva(rows: CrmRow[]): ZonaItem[] {
+  return mapImporteBarras(rows, "CondicionIVA", "Condición");
+}
+
+function mapImporteBarras(rows: CrmRow[], labelField: string, fallback: string): ZonaItem[] {
   return rows.map((row, index) => ({
-    zona: String(pickField(row, "Zona") ?? pickField(row, "Descripcion") ?? `Zona ${index + 1}`),
+    zona: String(pickField(row, labelField) ?? pickField(row, "Descripcion") ?? `${fallback} ${index + 1}`),
     importe: asNumber(pickField(row, "VentaComercialTotal")) ?? 0,
   }));
 }
