@@ -1,0 +1,54 @@
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.8fr) minmax(0, 1.4fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #202847;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  height: 8px;
+  border-radius: 99px;
+  background: #eef0f6;
+  overflow: hidden;
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+}
+
+.amount {
+  font-size: 12px;
+  font-weight: 700;
+  color: #202847;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .track {
+    grid-column: 1 / -1;
+  }
+}

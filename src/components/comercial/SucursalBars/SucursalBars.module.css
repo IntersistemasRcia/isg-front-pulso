@@ -1,0 +1,64 @@
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(88px, 120px) minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.name {
+  color: #202847;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  height: 10px;
+  background: #f3f1fa;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.amount {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pct {
+  width: 52px;
+  text-align: right;
+  color: #697189;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name pct"
+      "track track"
+      "amount amount";
+  }
+
+  .name { grid-area: name; }
+  .pct { grid-area: pct; }
+  .track { grid-area: track; }
+  .amount { grid-area: amount; }
+}

@@ -217,11 +217,24 @@ export function normalizeArquitecturaPayload(raw: unknown): SpArquitectura[] {
 export function toPulsoEjecutarSpBody(request: {
   nombreSp: string;
   parametros?: Record<string, unknown>;
-}): { nombreSp: string; parametros: Record<string, unknown> } {
-  return {
+  limiteFilas?: number | null;
+}): {
+  nombreSp: string;
+  parametros: Record<string, unknown>;
+  limiteFilas?: number | null;
+} {
+  const body: {
+    nombreSp: string;
+    parametros: Record<string, unknown>;
+    limiteFilas?: number | null;
+  } = {
     nombreSp: request.nombreSp,
     parametros: request.parametros ?? {},
   };
+  if (request.limiteFilas != null) {
+    body.limiteFilas = request.limiteFilas;
+  }
+  return body;
 }
 
 export function parsePulsoApiError(status: number, data: unknown): string {

@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 /**
  * GET /api/pulso/arquitectura
  * Proxy de isg-api-pulso GET /SPs_arquitectura para cache en localStorage del cliente.
+ * Query `?refresh=1` fuerza refetch (sin cache de 5 min en Next).
  */
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
@@ -25,7 +26,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const catalog = await getSpsArquitecturaCached(auth.token);
+    const force = request.nextUrl.searchParams.get("refresh") === "1";
+    const catalog = await getSpsArquitecturaCached(auth.token, { force });
     return NextResponse.json(toStoredArquitectura(catalog));
   } catch (error) {
     if (error instanceof PulsoApiError) {
