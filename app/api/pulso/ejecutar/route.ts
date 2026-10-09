@@ -6,11 +6,11 @@ import { requireAuth } from "@/utils/requireAuth";
 
 export const runtime = "nodejs";
 
-const SP_PREFIX = "sp_ISG_Vision_";
+const SP_PREFIXES = ["sp_ISG_Vision_", "sp_ISG_CRM_"];
 
 /**
  * POST /api/pulso/ejecutar
- * Proxy de isg-api-pulso POST /ejecutar-sp para el módulo Comercial.
+ * Proxy de isg-api-pulso POST /ejecutar-sp para Comercial y CRM.
  */
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
@@ -32,9 +32,9 @@ export async function POST(request: NextRequest) {
   }
 
   const nombreSp = String(body.nombreSp ?? "").trim();
-  if (!nombreSp.startsWith(SP_PREFIX)) {
+  if (!SP_PREFIXES.some((prefix) => nombreSp.startsWith(prefix))) {
     return NextResponse.json(
-      { message: "Solo se pueden ejecutar procedimientos de la suite Vision." },
+      { message: "Solo se pueden ejecutar procedimientos de las suites Vision y CRM." },
       { status: 400 },
     );
   }

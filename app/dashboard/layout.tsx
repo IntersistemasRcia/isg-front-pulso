@@ -10,6 +10,7 @@ import styles from "./dashboard.module.css";
 
 function moduleTitle(pathname: string): string {
   if (pathname.startsWith("/dashboard/comercial")) return "Dashboard Comercial";
+  if (pathname.startsWith("/dashboard/crm")) return "Resumen CRM Comercial";
   if (pathname.startsWith("/dashboard/settings/ia")) return "Configuración IA";
   return "Chat";
 }

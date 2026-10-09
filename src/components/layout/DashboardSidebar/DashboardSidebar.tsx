@@ -184,6 +184,17 @@ export function DashboardSidebar() {
           >
             Comercial
           </Link>
+          <Link
+            href="/dashboard/crm"
+            className={[
+              styles.navItem,
+              pathname.startsWith("/dashboard/crm") ? styles.navItemActive : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            CRM
+          </Link>
         </nav>
       </div>
 
