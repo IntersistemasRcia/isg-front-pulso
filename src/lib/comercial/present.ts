@@ -33,10 +33,31 @@ export function asNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const compact = new Intl.NumberFormat("es-AR", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+});
+
+/** Escala importes grandes: >= 1.000.000 → M, >= 1.000 → K. */
 export function formatMoney(value: unknown): string {
   const amount = asNumber(value);
   if (amount == null) return "—";
-  return `$ ${money.format(Math.round(amount))}`;
+  const rounded = Math.round(amount);
+  const abs = Math.abs(rounded);
+  const sign = rounded < 0 ? "-" : "";
+
+  if (abs >= 1_000_000) {
+    return `${sign}$ ${formatScaled(abs / 1_000_000)} M`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}$ ${formatScaled(abs / 1_000)} K`;
+  }
+  return `$ ${money.format(rounded)}`;
+}
+
+function formatScaled(scaled: number): string {
+  const tenths = Math.round(scaled * 10) / 10;
+  return compact.format(tenths);
 }
 
 export function formatCount(value: unknown): string {
