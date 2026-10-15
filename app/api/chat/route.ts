@@ -3,6 +3,7 @@ import type { UIMessage } from "ai";
 import { DEFAULT_MODEL_ID, getModelDefinition, normalizeModelId } from "@/lib/llm";
 import { runChatWithModelFallback } from "@/lib/llm/runChatWithFallback";
 import { normalizeChatMessages } from "@/lib/chat/normalizeChatMessages";
+import { stripToolRowsForTransport } from "@/lib/chat/stripToolRowsForTransport";
 import { windowMessages } from "@/lib/chat/windowMessages";
 import type { SpArquitectura } from "@/lib/pulso/types";
 import {
@@ -43,7 +44,10 @@ export async function POST(request: NextRequest) {
   };
   const allMessages = body.messages ?? [];
   const rawMessageCount = allMessages.length;
-  const normalizedMessages = normalizeChatMessages(allMessages);
+  // Defensa: aunque el cliente no strippee, no retenemos rows en memoria/LLM path.
+  const normalizedMessages = normalizeChatMessages(
+    stripToolRowsForTransport(allMessages),
+  );
   const requestedModelId = normalizeModelId(
     body.modelId?.trim() || DEFAULT_MODEL_ID,
   );

@@ -1,13 +1,7 @@
 import type { Metadata } from "next";
-import { Source_Sans_3, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import { AppProviders } from "@/components/providers/AppProviders";
 import "./globals.css";
-
-const sourceSans = Source_Sans_3({
-  variable: "--font-source-sans",
-  subsets: ["latin"],
-  display: "swap",
-});
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains",
@@ -18,6 +12,13 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "ISG Pulso",
   description: "Chatbot / IA para clientes ISG",
+  icons: {
+    icon: [
+      { url: "/logos/favicon.ico", sizes: "any" },
+      { url: "/logos/pulso-icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/logos/pulso-180.png",
+  },
 };
 
 export default function RootLayout({
@@ -26,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`${sourceSans.variable} ${jetbrainsMono.variable}`}>
+    <html lang="es" className={jetbrainsMono.variable}>
       <body>
         <AppProviders>{children}</AppProviders>
       </body>

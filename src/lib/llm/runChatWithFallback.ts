@@ -6,6 +6,7 @@ import {
   stepCountIs,
   streamText,
   type UIMessage,
+  type UIMessageStreamWriter,
 } from "ai";
 import { compactUiMessagesForModel } from "@/lib/chat/compactUiMessages";
 import {
@@ -94,6 +95,55 @@ function buildAgentStepOptions(definition?: ModelDefinition) {
   };
 }
 
+/**
+ * Tras generateText (cloud / fallback 429), hay que reemitir tool parts al cliente.
+ * Sin esto la UI no ve exportId / rows y el modelo “inventa” el botón Excel.
+ */
+function writeGenerateTextUiParts(
+  writer: UIMessageStreamWriter,
+  result: {
+    text: string;
+    toolResults: Array<{
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+      output: unknown;
+      dynamic?: boolean;
+    }>;
+  },
+): void {
+  for (const tr of result.toolResults) {
+    const dynamic = tr.dynamic === true ? { dynamic: true as const } : {};
+    writer.write({
+      type: "tool-input-available",
+      toolCallId: tr.toolCallId,
+      toolName: tr.toolName,
+      input: tr.input,
+      ...dynamic,
+    });
+    writer.write({
+      type: "tool-output-available",
+      toolCallId: tr.toolCallId,
+      output: tr.output,
+      ...dynamic,
+    });
+  }
+
+  const text = result.text.trim();
+  const fallback =
+    text ||
+    (result.toolResults.length > 0
+      ? null
+      : "No pude generar una respuesta en texto. Intentá reformular la consulta.");
+
+  if (fallback) {
+    const textId = "assistant-text";
+    writer.write({ type: "text-start", id: textId });
+    writer.write({ type: "text-delta", id: textId, delta: fallback });
+    writer.write({ type: "text-end", id: textId });
+  }
+}
+
 function buildPulsoDebugHeaders(prepared: ReturnType<typeof prepareChatPrompt>): Record<string, string> {
   const candidatesPayload = {
     catalogInPrompt: prepared.catalogInPrompt,
@@ -148,7 +198,6 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
   for (const modelId of modelChain) {
     const definition = getModelDefinition(modelId);
     const compactedMessages = compactUiMessagesForModel(messages, definition);
-    const modelMessages = await convertToModelMessages(compactedMessages);
 
     const prepared = prepareChatPrompt({
       definition,
@@ -158,6 +207,12 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
       historySummary,
       companyName,
       clienteId,
+    });
+
+    // Con tools, convertToModelMessages reaplica toModelOutput al historial
+    // (sin esto el LLM relee rows/previewRows gordos en turnos siguientes).
+    const modelMessages = await convertToModelMessages(compactedMessages, {
+      tools: prepared.tools,
     });
 
     try {
@@ -200,16 +255,15 @@ export async function runChatWithModelFallback(options: RunChatOptions): Promise
 
       const result = await generateText(agentOptions);
 
-      const text =
-        result.text.trim() ||
-        "No pude generar una respuesta en texto. Intentá reformular la consulta.";
-
       const stream = createUIMessageStream({
+        originalMessages: compactedMessages,
         execute({ writer }) {
-          const textId = "assistant-text";
-          writer.write({ type: "text-start", id: textId });
-          writer.write({ type: "text-delta", id: textId, delta: text });
-          writer.write({ type: "text-end", id: textId });
+          writeGenerateTextUiParts(writer, {
+            text: result.text,
+            toolResults: result.toolResults.filter(
+              (tr): tr is NonNullable<typeof tr> => tr != null,
+            ),
+          });
         },
       });
 
