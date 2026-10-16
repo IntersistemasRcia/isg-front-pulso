@@ -110,14 +110,6 @@
   font-size: 13px;
 }
 
-.kpis {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.card,
 .panel {
   background: #fff;
   border: 1px solid #e0e3ee;
@@ -125,47 +117,11 @@
   box-shadow: 0 2px 9px #27306308;
 }
 
-.card {
-  padding: 14px 15px;
-  min-height: 104px;
-}
-
-.cardLabel,
 .panelTitle {
   margin: 0;
   font-size: 13px;
   font-weight: 700;
   color: #4d5878;
-}
-
-.cardValue {
-  margin: 12px 0 0;
-  font-size: 26px;
-  font-weight: 700;
-  color: #545386;
-  line-height: 1.1;
-}
-
-.cardFoot {
-  margin: 12px 0 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: #697189;
-}
-
-.deltaUp {
-  color: #16834c;
-  font-weight: 700;
-}
-
-.deltaDown {
-  color: #bc4051;
-  font-weight: 700;
-}
-
-.deltaFlat {
-  color: #697189;
-  font-weight: 700;
 }
 
 .panels {
@@ -252,7 +208,6 @@
 }
 
 @media (max-width: 980px) {
-  .kpis,
   .panels,
   .distribucion {
     grid-template-columns: 1fr;
@@ -276,9 +231,5 @@
   .pill,
   .pillOn {
     border-bottom: 1px solid #d9ddeb;
-  }
-
-  .cardValue {
-    font-size: 22px;
   }
 }

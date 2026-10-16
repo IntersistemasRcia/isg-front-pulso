@@ -1,9 +1,7 @@
 import type { ComercialRow } from "@/lib/comercial/query";
+import { asNumber, formatMoney } from "@/utils/formatMoney";
 
-const money = new Intl.NumberFormat("es-AR", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
+export { asNumber, formatMoney } from "@/utils/formatMoney";
 
 const count = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
 
@@ -19,45 +17,6 @@ export function pickField(row: ComercialRow | null | undefined, name: string): u
     if (key.toLowerCase() === target) return value;
   }
   return undefined;
-}
-
-export function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const normalized = trimmed.includes(",")
-    ? trimmed.replace(/\./g, "").replace(",", ".")
-    : trimmed;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-const compact = new Intl.NumberFormat("es-AR", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 1,
-});
-
-/** Escala importes grandes: >= 1.000.000 → M, >= 1.000 → K. */
-export function formatMoney(value: unknown): string {
-  const amount = asNumber(value);
-  if (amount == null) return "—";
-  const rounded = Math.round(amount);
-  const abs = Math.abs(rounded);
-  const sign = rounded < 0 ? "-" : "";
-
-  if (abs >= 1_000_000) {
-    return `${sign}$ ${formatScaled(abs / 1_000_000)} M`;
-  }
-  if (abs >= 1_000) {
-    return `${sign}$ ${formatScaled(abs / 1_000)} K`;
-  }
-  return `$ ${money.format(rounded)}`;
-}
-
-function formatScaled(scaled: number): string {
-  const tenths = Math.round(scaled * 10) / 10;
-  return compact.format(tenths);
 }
 
 export function formatCount(value: unknown): string {
@@ -78,13 +37,18 @@ export type KpiDelta = {
   tone: "up" | "down" | "flat";
 };
 
-export type KpiCard = {
+export type KpiCardData = {
   id: string;
   label: string;
   value: string;
   caption: string;
   delta: KpiDelta | null;
+  /** Color del valor (ej. Margen Bruto positivo/negativo). */
+  valueTone?: "up" | "down" | "flat";
 };
+
+/** @deprecated Preferí KpiCardData; alias por compatibilidad. */
+export type KpiCard = KpiCardData;
 
 const NO_PREVIOUS = "sin datos de periodos anteriores";
 
@@ -124,7 +88,7 @@ function pointsDelta(current: unknown, previous: unknown): KpiDelta | null {
 export function mapVentasKpis(
   row: ComercialRow | null,
   previous: ComercialRow | null,
-): KpiCard[] {
+): KpiCardData[] {
   const comparable = previous != null;
   const delta = (currentField: string, previousField: string, kind: "ratio" | "points") => {
     if (!comparable) return null;
@@ -133,6 +97,7 @@ export function mapVentasKpis(
       : ratioDelta(pickField(row, currentField), pickField(previous, previousField));
   };
   const margen = formatMoney(pickField(row, "Margen"));
+  const margenPoints = percentPoints(pickField(row, "MargenPorcentaje"));
 
   return [
     {
@@ -150,6 +115,14 @@ export function mapVentasKpis(
       delta: delta("TotalFacturado", "TotalFacturado", "ratio"),
     },
     {
+      id: "margen",
+      label: "Margen Bruto",
+      value: formatPercent(pickField(row, "MargenPorcentaje")),
+      caption: margen === "—" ? "Margen monetario" : `Margen monetario ${margen}`,
+      delta: delta("MargenPorcentaje", "MargenPorcentaje", "points"),
+      valueTone: margenPoints == null ? undefined : toneOf(margenPoints),
+    },
+    {
       id: "comprobantes",
       label: "Comprobantes",
       value: formatCount(pickField(row, "CantComprobantes")),
@@ -164,18 +137,18 @@ export function mapVentasKpis(
       delta: delta("UnidadesVendidas", "UnidadesVendidas", "ratio"),
     },
     {
-      id: "ticket",
-      label: "Ticket Promedio",
+      id: "ticket-comercial",
+      label: "Ticket Comercial Promedio",
       value: formatMoney(pickField(row, "TicketComercial")),
       caption: "Promedio sin impuestos",
       delta: delta("TicketComercial", "TicketComercial", "ratio"),
     },
     {
-      id: "margen",
-      label: "Margen Bruto",
-      value: formatPercent(pickField(row, "MargenPorcentaje")),
-      caption: margen === "—" ? "Margen monetario" : `Margen monetario ${margen}`,
-      delta: delta("MargenPorcentaje", "MargenPorcentaje", "points"),
+      id: "ticket-fiscal",
+      label: "Ticket Fiscal Promedio",
+      value: formatMoney(pickField(row, "TicketFiscal")),
+      caption: "Promedio con impuestos",
+      delta: delta("TicketFiscal", "TicketFiscal", "ratio"),
     },
   ];
 }

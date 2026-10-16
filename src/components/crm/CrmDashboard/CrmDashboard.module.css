@@ -112,42 +112,12 @@
   font-size: 13px;
 }
 
-.kpis {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.card,
 .panel {
   border: 1px solid #e0e3ee;
   border-radius: 12px;
   box-shadow: 0 2px 9px #27306308;
 }
 
-.card {
-  padding: 14px 15px;
-  min-height: 104px;
-}
-
-.total {
-  background: #f4f1fb;
-}
-
-.facturada {
-  background: #fff6ee;
-}
-
-.pedidos {
-  background: #f3f6fd;
-}
-
-.clientes {
-  background: #f1f8f4;
-}
-
-.cardLabel,
 .panelTitle {
   margin: 0;
   font-size: 12px;
@@ -155,20 +125,6 @@
   color: #4d5878;
   text-transform: uppercase;
   letter-spacing: 0.2px;
-}
-
-.cardValue {
-  margin: 12px 0 0;
-  font-size: 26px;
-  font-weight: 700;
-  color: #202847;
-  line-height: 1.1;
-}
-
-.cardFoot {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: #697189;
 }
 
 .panels {
@@ -203,7 +159,6 @@
 }
 
 @media (max-width: 1100px) {
-  .kpis,
   .panels {
     grid-template-columns: 1fr 1fr;
   }
@@ -214,7 +169,6 @@
     padding: 16px;
   }
 
-  .kpis,
   .panels {
     grid-template-columns: 1fr;
   }
