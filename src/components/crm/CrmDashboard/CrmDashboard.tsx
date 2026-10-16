@@ -12,6 +12,7 @@ import {
   type CrmFilters,
   type CrmSnapshot,
 } from "@/lib/crm/query";
+import { KpiCard, KpiGrid } from "@/components/ui";
 import { mapClasificaciones, mapCondicionesIva, mapEvolucion, mapResumenKpis, mapZonas } from "@/lib/crm/present";
 import {
   formatPeriodLabel,
@@ -133,12 +134,6 @@ export function CrmDashboard() {
   }
 
   const kpis = mapResumenKpis(data?.resumen ?? null);
-  const toneClass = {
-    total: styles.total,
-    facturada: styles.facturada,
-    pedidos: styles.pedidos,
-    clientes: styles.clientes,
-  };
   const evolucion = mapEvolucion(data?.evolucion ?? []);
   const zonasVenta = mapZonas(data?.zonas ?? []);
   const clasificaciones = mapClasificaciones(data?.clasificaciones ?? []);
@@ -273,15 +268,18 @@ export function CrmDashboard() {
       {catalogError ? <p className={styles.error}>{catalogError}</p> : null}
       {data?.errors.resumen ? <p className={styles.error}>{data.errors.resumen}</p> : null}
 
-      <div className={styles.kpis}>
+      <KpiGrid columns={4}>
         {kpis.map((kpi) => (
-          <article key={kpi.id} className={`${styles.card} ${toneClass[kpi.tone]}`}>
-            <h2 className={styles.cardLabel}>{kpi.label}</h2>
-            <p className={styles.cardValue}>{loading && !data ? "…" : kpi.value}</p>
-            {kpi.foot ? <p className={styles.cardFoot}>{kpi.foot}</p> : null}
-          </article>
+          <KpiCard
+            key={kpi.id}
+            label={kpi.label}
+            value={kpi.value}
+            tone={kpi.tone}
+            foot={kpi.foot}
+            loading={loading && !data}
+          />
         ))}
-      </div>
+      </KpiGrid>
 
       <div className={styles.panels}>
         <article className={styles.panel}>

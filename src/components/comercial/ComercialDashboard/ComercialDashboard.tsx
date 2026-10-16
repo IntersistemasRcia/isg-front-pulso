@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { MediosPagoChart } from "@/components/comercial/MediosPagoChart/MediosPagoChart";
 import { SucursalBars } from "@/components/comercial/SucursalBars/SucursalBars";
+import { KpiCard, KpiGrid, KpiSection, kpiDeltaClass } from "@/components/ui";
 import { loadComercial, type ComercialSnapshot } from "@/lib/comercial/query";
 import {
   formatPeriodLabel,
@@ -14,8 +15,35 @@ import {
   type DateRange,
   type PeriodPreset,
 } from "@/lib/comercial/period";
-import { mapMediosPago, mapRubros, mapSucursales, mapVentasKpis, formatMoney, pickField, NO_PREVIOUS } from "@/lib/comercial/present";
+import {
+  mapMediosPago,
+  mapRubros,
+  mapSucursales,
+  mapVentasKpis,
+  formatMoney,
+  pickField,
+  NO_PREVIOUS,
+  type KpiCardData,
+} from "@/lib/comercial/present";
 import styles from "./ComercialDashboard.module.css";
+
+function kpiFoot(kpi: KpiCardData, showFoot: boolean) {
+  if (!showFoot) return undefined;
+  return (
+    <>
+      <span>{kpi.caption}</span>
+      {kpi.delta ? (
+        <>
+          {" · "}
+          <span className={kpiDeltaClass[kpi.delta.tone]}>{kpi.delta.text}</span>
+          {" vs. período comparable anterior"}
+        </>
+      ) : (
+        ` · ${NO_PREVIOUS}`
+      )}
+    </>
+  );
+}
 
 export function ComercialDashboard() {
   const { token } = useAuth();
@@ -77,15 +105,14 @@ export function ComercialDashboard() {
     void load({ desde, hasta }, "personalizado");
   }
 
-  const deltaTone = {
-    up: styles.deltaUp,
-    down: styles.deltaDown,
-    flat: styles.deltaFlat,
-  };
   const kpis = mapVentasKpis(data?.ventas ?? null, data?.ventasAnterior ?? null);
+  const topKpis = kpis.slice(0, 3);
+  const opsKpis = kpis.slice(3);
   const medios = mapMediosPago(data?.medios ?? []);
   const sucursales = mapSucursales(data?.sucursales ?? []);
   const rubros = mapRubros(data?.rubros ?? []);
+  const showFoot = Boolean(data);
+  const kpiLoading = loading && !data;
 
   return (
     <section className={styles.page}>
@@ -152,27 +179,56 @@ export function ComercialDashboard() {
       {error ? <p className={styles.error}>{error}</p> : null}
       {data?.errors.ventas ? <p className={styles.error}>{data.errors.ventas}</p> : null}
 
-      <div className={styles.kpis}>
-        {kpis.map((kpi) => (
-          <article key={kpi.id} className={styles.card}>
-            <h2 className={styles.cardLabel}>{kpi.label}</h2>
-            <p className={styles.cardValue}>{loading && !data ? "…" : kpi.value}</p>
-            {data ? (
-              <p className={styles.cardFoot}>
-                <span>{kpi.caption}</span>
-                {kpi.delta ? (
-                  <>
-                    {" · "}
-                    <span className={deltaTone[kpi.delta.tone]}>{kpi.delta.text}</span>
-                    {" vs. período comparable anterior"}
-                  </>
-                ) : (
-                  ` · ${NO_PREVIOUS}`
-                )}
-              </p>
-            ) : null}
-          </article>
+      <KpiGrid columns={3}>
+        {topKpis.map((kpi) => (
+          <KpiCard
+            key={kpi.id}
+            label={kpi.label}
+            value={kpi.value}
+            valueTone={kpi.valueTone}
+            foot={kpiFoot(kpi, showFoot)}
+            loading={kpiLoading}
+          />
         ))}
+      </KpiGrid>
+
+      <KpiSection title="Operaciones">
+        <KpiGrid columns={4}>
+          {opsKpis.map((kpi) => (
+            <KpiCard
+              key={kpi.id}
+              label={kpi.label}
+              value={kpi.value}
+              size="sm"
+              foot={kpiFoot(kpi, showFoot)}
+              loading={kpiLoading}
+            />
+          ))}
+        </KpiGrid>
+      </KpiSection>
+
+      <div className={styles.panels}>
+        <article className={styles.panel}>
+          <h2 className={styles.panelTitle}>Ventas por Sucursal</h2>
+          {data?.errors.sucursales ? (
+            <p className={styles.empty}>{data.errors.sucursales}</p>
+          ) : sucursales.length === 0 ? (
+            <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
+          ) : (
+            <SucursalBars items={sucursales} />
+          )}
+        </article>
+
+        <article className={styles.panel}>
+          <h2 className={styles.panelTitle}>Ventas por Rubro · Top 5 por Venta Neta</h2>
+          {data?.errors.rubros ? (
+            <p className={styles.empty}>{data.errors.rubros}</p>
+          ) : rubros.length === 0 ? (
+            <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
+          ) : (
+            <SucursalBars items={rubros} />
+          )}
+        </article>
       </div>
 
       <div className={styles.panels}>
@@ -184,30 +240,6 @@ export function ComercialDashboard() {
             <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
           ) : (
             <MediosPagoChart items={medios} />
-          )}
-        </article>
-
-        <article className={styles.panel}>
-          <h2 className={styles.panelTitle}>Ventas por Sucursal</h2>
-          {data?.errors.sucursales ? (
-            <p className={styles.empty}>{data.errors.sucursales}</p>
-          ) : sucursales.length === 0 ? (
-            <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
-          ) : (
-            <SucursalBars items={sucursales} />
-          )}
-        </article>
-      </div>
-
-      <div className={styles.panels}>
-        <article className={styles.panel}>
-          <h2 className={styles.panelTitle}>Ventas por Rubro · Top 5 por Venta Neta</h2>
-          {data?.errors.rubros ? (
-            <p className={styles.empty}>{data.errors.rubros}</p>
-          ) : rubros.length === 0 ? (
-            <p className={styles.empty}>{loading ? "Cargando…" : "Sin datos para este período."}</p>
-          ) : (
-            <SucursalBars items={rubros} />
           )}
         </article>
 

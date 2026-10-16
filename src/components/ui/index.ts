@@ -9,3 +9,13 @@ export type { CardProps } from "./Card/Card";
 
 export { Modal } from "./Modal/Modal";
 export type { ModalProps } from "./Modal/Modal";
+
+export { KpiCard, KpiGrid, KpiSection, kpiDeltaClass } from "./KpiCard/KpiCard";
+export type {
+  KpiCardProps,
+  KpiCardSize,
+  KpiCardTone,
+  KpiGridProps,
+  KpiSectionProps,
+  KpiValueTone,
+} from "./KpiCard/KpiCard";
