@@ -7,6 +7,27 @@ import { formatSpParamHint } from "@/lib/pulso/spParamResolver";
 import type { SpArquitectura } from "@/lib/pulso/types";
 import { truncateToolResult, type TruncateToolResultOptions } from "@/lib/chat/truncateToolResult";
 import { coerceParamsForSp } from "@/lib/pulso/spParamResolver";
+import {
+  RESULT_LARGE_PROBE_LIMIT,
+  RESULT_LARGE_THRESHOLD,
+  listOptionalParamHints,
+  resolveResultSize,
+  shouldGateLargeResult,
+  type ModoResultado,
+} from "@/lib/pulso/resultSizeGate";
+import {
+  buildCompleteListadoPayload,
+  buildLargePreviewPayload,
+  buildSmallListadoPayload,
+} from "@/lib/pulso/listadoUiPayload";
+import {
+  UI_PREVIEW_MAX_ROWS,
+  UI_TABLE_AVISO,
+  WIDE_COLUMN_THRESHOLD,
+  countRowColumns,
+  slicePreviewRows,
+} from "@/lib/pulso/tablePreview";
+import { toEjecutarConsultaModelOutput } from "@/lib/pulso/toEjecutarConsultaModelOutput";
 
 const parametroItemSchema = z.object({
   nombre: z
@@ -33,6 +54,12 @@ const ejecutarConsultaPulsoSchema = z.object({
     .describe(
       "Lista de parámetros del SP. Usá los nombres exactos del catálogo (DesdeFecha, HastaFecha, etc.).",
     ),
+  modoResultado: z
+    .enum(["preview50", "completo"])
+    .optional()
+    .describe(
+      "Tras un listado grande: preview50 = adelanto en pantalla; completo = traer todas las filas y Excel si hay más de 50. Omitir en la primera ejecución.",
+    ),
 });
 
 /** Convierte lista {nombre, valor} del LLM a Record (sin renombrar; coerceParamsForSp alinea al catálogo). */
@@ -52,11 +79,10 @@ function paramsKeysOf(record: Record<string, unknown>): string {
   return Object.keys(record).join(",") || "(none)";
 }
 
-function countResultRows(result: Record<string, unknown>): number | undefined {
-  if (Array.isArray(result.rows)) return result.rows.length;
-  if (Array.isArray(result.data)) return result.data.length;
-  if (typeof result.totalRows === "number") return result.totalRows;
-  return undefined;
+function resolveLimiteFilas(modo: ModoResultado | undefined): number | undefined {
+  if (modo === "completo") return undefined;
+  if (modo === "preview50") return RESULT_LARGE_THRESHOLD;
+  return RESULT_LARGE_PROBE_LIMIT;
 }
 
 /** Log compacto siempre (PM2 / production). Sin filas ni valores de params. */
@@ -84,6 +110,52 @@ function logPulsoExec(opts: {
 }
 
 /**
+ * Instrucción al LLM tras fallo de ejecución.
+ * Si el SP rechazó un literal de filtro, priorizar ofrecer opciones válidas.
+ */
+function buildExecFailAvisoUsuario(
+  message: string | undefined,
+  catalogSp: SpArquitectura | undefined,
+): string {
+  const msg = (message ?? "").trim();
+  const looksLikeEnumReject =
+    /debe ser|valores?\s+permitid|TODAS|FACTURADAS|PEDIDOS|no\s+v[aá]lido|inv[aá]lido/i.test(
+      msg,
+    );
+
+  if (looksLikeEnumReject) {
+    const desc = (catalogSp?.descripcion ?? catalogSp?.description ?? "").trim();
+    return [
+      "NO digas que no hay informe ni que no existe esa consulta.",
+      "El filtro enviado no es un literal válido del parámetro.",
+      msg ? `Detalle técnico del error (uso interno): ${msg.slice(0, 240)}` : "",
+      desc
+        ? "Usá la descripción del catálogo: interpretá el pedido o ofrecé al usuario las opciones de filtro definidas ahí, en lenguaje de negocio, numeradas, y preguntá cuál prefiere."
+        : "Ofrecé al usuario las opciones válidas mencionadas en el error, en lenguaje de negocio, numeradas, y preguntá cuál prefiere.",
+      "Si ya queda claro el literal correcto, reintentá ejecutarConsultaPulso una vez con ese valor exacto.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return [
+    "Explicá el problema en una frase simple al usuario (sin jerga técnica).",
+    "Si el catálogo describe filtros del mismo informe, ofrecélos en lenguaje de negocio en lugar de decir que no hay informe.",
+    "Ofrecé reintentar o ajustar la búsqueda.",
+  ].join(" ");
+}
+
+function spUiTitle(
+  catalogSp: SpArquitectura | undefined,
+  nombreSp: string,
+): string {
+  return (
+    catalogSp?.descripcion?.slice(0, 80) ||
+    nombreSp.replace(/^sp_ISG_Vision_/i, "").replace(/_/g, " ")
+  );
+}
+
+/**
  * Tool principal del agente Pulso: consulta datos ERP vía isg-api-pulso.
  * Parámetros validados contra GET /SPs_arquitectura (sys.parameters).
  */
@@ -100,9 +172,13 @@ export function buildEjecutarConsultaPulsoTool(
       "Usá solo parámetros de entrada del catálogo. Si el usuario dio fechas o período (ej. «junio»), calculá FechaDesde/FechaHasta con el año actual si falta y ejecutá ANTES de responder.",
       "Nunca respondas «no hay ventas», «no encontré datos» o «no se pudo acceder» sin haber ejecutado esta tool. Si no hay match exacto, ofrecé 1–2 alternativas de negocio cercanas y pedí confirmar; no inventes fallos de acceso.",
       "Si faltan inputs requeridos del catálogo que el usuario no dio, no inventes valores: el runtime devolverá MISSING_REQUIRED_PARAMS y debés pedir el dato de negocio.",
+      "Excel solo si hay más de 50 filas (exportId). No ofrezcas Excel en consultas chicas.",
     ].join(" "),
     inputSchema: ejecutarConsultaPulsoSchema,
-    execute: async ({ nombreSp, parametros }) => {
+    // Resumen limpio al LLM; la UI sigue recibiendo el output completo de execute.
+    toModelOutput: ({ output }: { output: unknown }) =>
+      toEjecutarConsultaModelOutput(output),
+    execute: async ({ nombreSp, parametros, modoResultado }) => {
       const started = Date.now();
       const raw = normalizeToolParametros(parametros);
       const {
@@ -194,9 +270,16 @@ export function buildEjecutarConsultaPulsoTool(
       }
 
       try {
+        const limiteFilas = resolveLimiteFilas(modoResultado);
+        const execTimeoutMs =
+          modoResultado === "completo" || limiteFilas == null ? 60_000 : 25_000;
         const result = await ejecutarSpPulso(
-          { nombreSp, parametros: parametrosRecord },
-          { sessionToken, signal: AbortSignal.timeout(25_000) },
+          {
+            nombreSp,
+            parametros: parametrosRecord,
+            ...(limiteFilas != null ? { limiteFilas } : {}),
+          },
+          { sessionToken, signal: AbortSignal.timeout(execTimeoutMs) },
         );
         const ms = Date.now() - started;
         if (result.ok === false) {
@@ -213,23 +296,138 @@ export function buildEjecutarConsultaPulsoTool(
             ...result,
             nombreSp,
             warnings: warnings.length ? warnings : undefined,
-            avisoUsuario:
-              "Explicá el problema en una frase simple al usuario (sin jerga técnica) y ofrecé reintentar o ajustar la búsqueda.",
+            avisoUsuario: buildExecFailAvisoUsuario(
+              typeof fail.message === "string" ? fail.message : undefined,
+              catalogSp,
+            ),
           }, truncateOptions);
         }
-        const okResult = result as Record<string, unknown>;
+
+        const size = resolveResultSize(result, { limiteFilas });
+        const { totalRows, truncated, rows, totalExact, atLeastRows } = size;
+        const title = spUiTitle(catalogSp, nombreSp);
+        const optionalParamHints = listOptionalParamHints(
+          nombreSp,
+          parametrosRecord,
+          catalog,
+        );
+        const baseUi = {
+          nombreSp,
+          title,
+          warnings,
+          optionalParamHints,
+        };
+
+        // ── Completo: materializar todas las filas + Excel si >50 ────────────
+        if (modoResultado === "completo") {
+          if (!rows.length) {
+            logPulsoExec({
+              nombreSp,
+              ok: false,
+              ms,
+              code: "EMPTY_RESULT",
+              paramsKeys,
+              rows: 0,
+            });
+            return {
+              ok: false,
+              code: "EMPTY_RESULT",
+              nombreSp,
+              totalRows: 0,
+              avisoUsuario:
+                "No hubo filas para exportar. Decíselo al usuario en una frase simple de negocio.",
+            };
+          }
+          logPulsoExec({
+            nombreSp,
+            ok: true,
+            ms,
+            code:
+              rows.length > RESULT_LARGE_THRESHOLD
+                ? "EXCEL_EXPORT"
+                : "OK_SMALL",
+            paramsKeys,
+            rows: rows.length,
+          });
+          return buildCompleteListadoPayload({ ...baseUi, allRows: rows });
+        }
+
+        // ── Grande (1ª pasada / probe): adelanto + total si el API dio COUNT ─
+        // No reconsultar todo acá: el Excel completo va en modoResultado=completo.
+        if (shouldGateLargeResult(modoResultado, totalRows, truncated)) {
+          const previewRows = slicePreviewRows(rows, RESULT_LARGE_THRESHOLD);
+          logPulsoExec({
+            nombreSp,
+            ok: true,
+            ms,
+            code: totalExact ? "LARGE_PREVIEW_EXACT" : "LARGE_PREVIEW_UNCERTAIN",
+            paramsKeys,
+            rows: totalExact ? totalRows : previewRows.length,
+          });
+          return buildLargePreviewPayload({
+            ...baseUi,
+            previewRows,
+            size: { totalRows, totalExact, atLeastRows },
+          });
+        }
+
+        // ── Preview50 explícito ──────────────────────────────────────────────
+        if (modoResultado === "preview50") {
+          const previewRows = rows.slice(0, RESULT_LARGE_THRESHOLD);
+          logPulsoExec({
+            nombreSp,
+            ok: true,
+            ms,
+            code: "PREVIEW50",
+            paramsKeys,
+            rows: totalExact ? totalRows : previewRows.length,
+          });
+          return buildLargePreviewPayload({
+            ...baseUi,
+            previewRows,
+            size: { totalRows, totalExact, atLeastRows },
+          });
+        }
+
+        // ── Resultado chico (≤50, no truncated) ──────────────────────────────
         logPulsoExec({
           nombreSp,
           ok: true,
           ms,
           paramsKeys,
-          rows: countResultRows(okResult),
+          rows: rows.length,
         });
-        return truncateToolResult({
-          ...result,
+
+        if (rows.length <= RESULT_LARGE_THRESHOLD) {
+          return buildSmallListadoPayload({ ...baseUi, rows });
+        }
+
+        // Defensa: dataset grande sin flags de truncate del API.
+        const wide = countRowColumns(rows) > WIDE_COLUMN_THRESHOLD;
+        const uiRows = slicePreviewRows(rows, UI_PREVIEW_MAX_ROWS);
+        return {
+          ok: true,
+          uiTable: true,
           nombreSp,
+          rows: uiRows,
+          totalRows: rows.length,
+          totalExact: true,
+          mostrando: uiRows.length,
+          truncated: rows.length > uiRows.length,
+          columnCount: countRowColumns(rows),
           warnings: warnings.length ? warnings : undefined,
-        }, truncateOptions);
+          avisoUsuario: [
+            UI_TABLE_AVISO,
+            `Hay ${rows.length} registros; en pantalla ves un adelanto.`,
+            "Para Excel completo pedí modoResultado=completo.",
+            wide
+              ? "Hay muchas columnas: se puede desplazar la tabla en pantalla."
+              : "",
+            "NO listes filas. NO digas UI/HTML/tool.",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        };
       } catch (error) {
         const message =
           error instanceof Error
@@ -255,8 +453,7 @@ export function buildEjecutarConsultaPulsoTool(
           message,
           nombreSp,
           parametros: parametrosRecord,
-          avisoUsuario:
-            "Decile al usuario que no se pudo obtener la información ahora y sugerí reintentar en unos segundos.",
+          avisoUsuario: buildExecFailAvisoUsuario(message, catalogSp),
         };
       }
     },

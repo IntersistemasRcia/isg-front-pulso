@@ -9,6 +9,7 @@ export {
 } from "@/lib/pulso/client";
 export {
   getSpsArquitecturaCached,
+  invalidateSpsArquitecturaCache,
   formatArquitecturaForPrompt,
   formatClosestAlternativesHint,
 } from "@/lib/pulso/catalog";

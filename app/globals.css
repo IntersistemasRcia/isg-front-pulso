@@ -47,7 +47,7 @@
   /* Chat */
   --color-bubble-user: var(--color-violet);
   --color-bubble-assistant: #ffffff;
-  --color-sidebar: #250a57;
+  --color-sidebar: #3e416d;
   --color-sidebar-hover: #3a1580;
 
   /* Layout (fluido / responsive) */
@@ -62,7 +62,7 @@
   --shadow-md: 0 4px 16px rgba(106, 46, 210, 0.12);
 
   /* Typography */
-  --font-sans: var(--font-source-sans), "Segoe UI", sans-serif;
+  --font-sans: Verdana, Arial, sans-serif;
   --font-mono: var(--font-jetbrains), "Consolas", monospace;
   --font-size-xs: clamp(0.7rem, 0.65rem + 0.2vw, 0.75rem);
   --font-size-sm: clamp(0.8rem, 0.75rem + 0.25vw, 0.875rem);

@@ -51,6 +51,7 @@ function buildAuthResponse(
   token: string,
   user: LoginResponse["user"],
   expiresAt?: string,
+  secure = false,
 ) {
   const response: LoginResponse = { token, expiresAt, user };
   const res = NextResponse.json(response);
@@ -58,11 +59,14 @@ function buildAuthResponse(
     ? Math.max(Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000), 0)
     : 60 * 60 * 8;
 
+  // HttpOnly: el cliente no puede corromper el JWT en document.cookie (+ → espacio).
+  // El Bearer sigue yendo desde localStorage en los fetch del dashboard.
   res.cookies.set(AUTH_COOKIE_NAME, token, {
-    httpOnly: false,
+    httpOnly: true,
     sameSite: "lax",
     path: "/",
     maxAge,
+    secure,
   });
 
   return res;
@@ -103,7 +107,12 @@ export async function POST(request: NextRequest) {
     }
 
     const local = await issueLocalToken(body.username);
-    return buildAuthResponse(local.token, local.user, local.expiresAt);
+    return buildAuthResponse(
+      local.token,
+      local.user,
+      local.expiresAt,
+      request.nextUrl.protocol === "https:",
+    );
   }
 
   try {
@@ -160,7 +169,12 @@ export async function POST(request: NextRequest) {
           ? new Date(payload.exp * 1000).toISOString()
           : undefined;
 
-    return buildAuthResponse(token, user, expiresAt);
+    return buildAuthResponse(
+      token,
+      user,
+      expiresAt,
+      request.nextUrl.protocol === "https:",
+    );
   } catch (error) {
     console.error("[auth/login]", error);
     return NextResponse.json(
