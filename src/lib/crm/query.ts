@@ -1,5 +1,10 @@
 import { authFetch } from "@/utils/api";
-import { formatPulsoDay, type DateRange } from "@/lib/comercial/period";
+import {
+  formatPulsoDay,
+  previousRange,
+  type DateRange,
+  type PeriodPreset,
+} from "@/lib/comercial/period";
 
 export type CrmRow = Record<string, unknown>;
 
@@ -22,6 +27,7 @@ const EVOLUCION = "sp_ISG_Vision_CRM_Visual_Ventas_Evolucion";
 const POR_ZONA = "sp_ISG_Vision_CRM_Visual_Ventas_PorZona";
 const POR_CLASIFICACION = "sp_ISG_Vision_CRM_Visual_Ventas_PorClasificacion";
 const POR_CONDICION_IVA = "sp_ISG_Vision_CRM_Visual_Ventas_PorCondicionIVA";
+const OPERACIONES = "sp_ISG_Vision_CRM_Visual_Operaciones_Consultar";
 const CATALOGO_ZONAS = "sp_ISG_Vision_Catalogo_Zonas";
 const CATALOGO_VENDEDORES = "sp_ISG_Vision_Catalogo_Vendedores";
 
@@ -72,48 +78,74 @@ export function crmParametros(filters: CrmFilters): Record<string, unknown> {
 
 export type CrmSnapshot = {
   resumen: CrmRow | null;
+  resumenAnterior: CrmRow | null;
   evolucion: CrmRow[];
   zonas: CrmRow[];
   clasificaciones: CrmRow[];
   condicionesIva: CrmRow[];
+  operaciones: CrmRow[];
   errors: {
     resumen?: string;
+    resumenAnterior?: string;
     evolucion?: string;
     zonas?: string;
     clasificaciones?: string;
     condicionesIva?: string;
+    operaciones?: string;
   };
 };
 
 export async function loadCrm(
   filters: CrmFilters,
+  preset: PeriodPreset,
   token: string,
   signal?: AbortSignal,
 ): Promise<CrmSnapshot> {
   const parametros = crmParametros(filters);
-  const [resumenResult, evolucionResult, zonasResult, clasificacionResult, ivaResult] =
-    await Promise.allSettled([
-      ejecutarSp(RESUMEN, parametros, token, signal),
-      ejecutarSp(EVOLUCION, parametros, token, signal),
-      ejecutarSp(POR_ZONA, parametros, token, signal),
-      ejecutarSp(POR_CLASIFICACION, parametros, token, signal),
-      ejecutarSp(POR_CONDICION_IVA, parametros, token, signal),
-    ]);
+  const anteriorRange = previousRange(filters.range, preset);
+  const parametrosAnterior = crmParametros({ ...filters, range: anteriorRange });
+
+  const [
+    resumenResult,
+    resumenAnteriorResult,
+    evolucionResult,
+    zonasResult,
+    clasificacionResult,
+    ivaResult,
+    operacionesResult,
+  ] = await Promise.allSettled([
+    ejecutarSp(RESUMEN, parametros, token, signal),
+    ejecutarSp(RESUMEN, parametrosAnterior, token, signal),
+    ejecutarSp(EVOLUCION, parametros, token, signal),
+    ejecutarSp(POR_ZONA, parametros, token, signal),
+    ejecutarSp(POR_CLASIFICACION, parametros, token, signal),
+    ejecutarSp(POR_CONDICION_IVA, parametros, token, signal),
+    ejecutarSp(OPERACIONES, parametros, token, signal),
+  ]);
 
   return {
     resumen: resumenResult.status === "fulfilled" ? resumenResult.value[0] ?? null : null,
+    resumenAnterior:
+      resumenAnteriorResult.status === "fulfilled" ? resumenAnteriorResult.value[0] ?? null : null,
     evolucion: evolucionResult.status === "fulfilled" ? evolucionResult.value : [],
     zonas: zonasResult.status === "fulfilled" ? zonasResult.value : [],
     clasificaciones: clasificacionResult.status === "fulfilled" ? clasificacionResult.value : [],
     condicionesIva: ivaResult.status === "fulfilled" ? ivaResult.value : [],
+    operaciones: operacionesResult.status === "fulfilled" ? operacionesResult.value : [],
     errors: {
       ...(resumenResult.status === "rejected" ? { resumen: messageOf(resumenResult.reason) } : {}),
+      ...(resumenAnteriorResult.status === "rejected"
+        ? { resumenAnterior: messageOf(resumenAnteriorResult.reason) }
+        : {}),
       ...(evolucionResult.status === "rejected" ? { evolucion: messageOf(evolucionResult.reason) } : {}),
       ...(zonasResult.status === "rejected" ? { zonas: messageOf(zonasResult.reason) } : {}),
       ...(clasificacionResult.status === "rejected"
         ? { clasificaciones: messageOf(clasificacionResult.reason) }
         : {}),
       ...(ivaResult.status === "rejected" ? { condicionesIva: messageOf(ivaResult.reason) } : {}),
+      ...(operacionesResult.status === "rejected"
+        ? { operaciones: messageOf(operacionesResult.reason) }
+        : {}),
     },
   };
 }

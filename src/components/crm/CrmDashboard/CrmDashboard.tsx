@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { EvolucionChart } from "@/components/crm/EvolucionChart/EvolucionChart";
+import { OperacionesTable } from "@/components/crm/OperacionesTable/OperacionesTable";
 import { ZonaBars } from "@/components/crm/ZonaBars/ZonaBars";
 import {
   loadCrm,
@@ -12,8 +13,17 @@ import {
   type CrmFilters,
   type CrmSnapshot,
 } from "@/lib/crm/query";
-import { KpiCard, KpiGrid } from "@/components/ui";
-import { mapClasificaciones, mapCondicionesIva, mapEvolucion, mapResumenKpis, mapZonas } from "@/lib/crm/present";
+import { KpiCard, KpiGrid, kpiDeltaClass } from "@/components/ui";
+import {
+  mapClasificaciones,
+  mapCondicionesIva,
+  mapEvolucion,
+  mapOperaciones,
+  mapResumenKpis,
+  mapZonas,
+  NO_PREVIOUS,
+  type CrmKpi,
+} from "@/lib/crm/present";
 import {
   formatPeriodLabel,
   parseDateInput,
@@ -30,6 +40,28 @@ const ESTADOS: { id: CrmEstado; label: string }[] = [
   { id: "CON", label: "CON" },
   { id: "SIN", label: "SIN" },
 ];
+
+function kpiFoot(kpi: CrmKpi, showFoot: boolean) {
+  if (!showFoot) return undefined;
+  return (
+    <>
+      {kpi.detail ? (
+        <>
+          <span>{kpi.detail}</span>
+          {" · "}
+        </>
+      ) : null}
+      {kpi.delta ? (
+        <>
+          <span className={kpiDeltaClass[kpi.delta.tone]}>{kpi.delta.text}</span>
+          {" vs. período anterior"}
+        </>
+      ) : (
+        NO_PREVIOUS
+      )}
+    </>
+  );
+}
 
 export function CrmDashboard() {
   const { token } = useAuth();
@@ -48,12 +80,12 @@ export function CrmDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
-    async (filters: CrmFilters, signal?: AbortSignal) => {
+    async (filters: CrmFilters, nextPreset: PeriodPreset, signal?: AbortSignal) => {
       if (!token) return;
       setLoading(true);
       setError(null);
       try {
-        const snapshot = await loadCrm(filters, token, signal);
+        const snapshot = await loadCrm(filters, nextPreset, token, signal);
         if (signal?.aborted) return;
         setData(snapshot);
         setRange(filters.range);
@@ -77,6 +109,7 @@ export function CrmDashboard() {
         codigoZona: null,
         codigoVendedor: null,
       },
+      "esteMes",
       controller.signal,
     );
     return () => controller.abort();
@@ -115,7 +148,7 @@ export function CrmDashboard() {
     setPreset(next);
     setCustomDesde(toDateInputValue(period.desde));
     setCustomCorte(toDateInputValue(period.hasta));
-    void load(currentFilters({ range: period }));
+    void load(currentFilters({ range: period }), next);
   }
 
   function applyCustom() {
@@ -130,14 +163,17 @@ export function CrmDashboard() {
       return;
     }
     setPreset("personalizado");
-    void load(currentFilters({ range: { desde, hasta: corte } }));
+    void load(currentFilters({ range: { desde, hasta: corte } }), "personalizado");
   }
 
-  const kpis = mapResumenKpis(data?.resumen ?? null);
+  const kpis = mapResumenKpis(data?.resumen ?? null, data?.resumenAnterior ?? null);
   const evolucion = mapEvolucion(data?.evolucion ?? []);
   const zonasVenta = mapZonas(data?.zonas ?? []);
   const clasificaciones = mapClasificaciones(data?.clasificaciones ?? []);
   const condicionesIva = mapCondicionesIva(data?.condicionesIva ?? []);
+  const operaciones = mapOperaciones(data?.operaciones ?? []);
+  const showFoot = Boolean(data);
+  const kpiLoading = loading && !data;
 
   return (
     <section className={styles.page}>
@@ -196,7 +232,7 @@ export function CrmDashboard() {
             onChange={(event) => {
               const next = event.target.value as CrmEstado;
               setEstado(next);
-              void load(currentFilters({ estado: next }));
+              void load(currentFilters({ estado: next }), preset);
             }}
           >
             {ESTADOS.map((option) => (
@@ -215,7 +251,7 @@ export function CrmDashboard() {
             onChange={(event) => {
               const next = event.target.value === "" ? null : Number(event.target.value);
               setCodigoZona(next);
-              void load(currentFilters({ codigoZona: next }));
+              void load(currentFilters({ codigoZona: next }), preset);
             }}
           >
             <option value="">Todas las zonas</option>
@@ -235,7 +271,7 @@ export function CrmDashboard() {
             onChange={(event) => {
               const next = event.target.value === "" ? null : Number(event.target.value);
               setCodigoVendedor(next);
-              void load(currentFilters({ codigoVendedor: next }));
+              void load(currentFilters({ codigoVendedor: next }), preset);
             }}
           >
             <option value="">Todos</option>
@@ -252,7 +288,7 @@ export function CrmDashboard() {
           className={styles.refresh}
           onClick={() => {
             if (preset === "personalizado") applyCustom();
-            else void load(currentFilters());
+            else void load(currentFilters(), preset);
           }}
         >
           Actualizar
@@ -275,15 +311,15 @@ export function CrmDashboard() {
             label={kpi.label}
             value={kpi.value}
             tone={kpi.tone}
-            foot={kpi.foot}
-            loading={loading && !data}
+            foot={kpiFoot(kpi, showFoot)}
+            loading={kpiLoading}
           />
         ))}
       </KpiGrid>
 
       <div className={styles.panels}>
         <article className={styles.panel}>
-          <h2 className={styles.panelTitle}>Evolución de la venta comercial</h2>
+          <h2 className={styles.panelTitle}>Evolución de ventas</h2>
           {data?.errors.evolucion ? (
             <p className={styles.empty}>{data.errors.evolucion}</p>
           ) : evolucion.length === 0 ? (
@@ -294,6 +330,13 @@ export function CrmDashboard() {
         </article>
 
         <article className={styles.panel}>
+          <h2 className={styles.panelTitle}>Estado de pedidos</h2>
+          <p className={styles.empty}>Pendiente de SP</p>
+        </article>
+      </div>
+
+      <div className={styles.panelsTriple}>
+        <article className={styles.panel}>
           <h2 className={styles.panelTitle}>Venta por zona</h2>
           {data?.errors.zonas ? (
             <p className={styles.empty}>{data.errors.zonas}</p>
@@ -303,9 +346,7 @@ export function CrmDashboard() {
             <ZonaBars items={zonasVenta} />
           )}
         </article>
-      </div>
 
-      <div className={`${styles.panels} ${styles.panelsEqual}`}>
         <article className={styles.panel}>
           <h2 className={styles.panelTitle}>Venta por clasificación de cliente</h2>
           {data?.errors.clasificaciones ? (
@@ -328,6 +369,29 @@ export function CrmDashboard() {
           )}
         </article>
       </div>
+
+      <div className={`${styles.panels} ${styles.panelsEqual}`}>
+        <article className={styles.panel}>
+          <h2 className={styles.panelTitle}>Top 5 vendedores</h2>
+          <p className={styles.empty}>Pendiente de SP</p>
+        </article>
+
+        <article className={styles.panel}>
+          <h2 className={styles.panelTitle}>Top 5 clientes</h2>
+          <p className={styles.empty}>Pendiente de SP</p>
+        </article>
+      </div>
+
+      <article className={`${styles.panel} ${styles.panelWide}`}>
+        <h2 className={styles.panelTitle}>Últimas operaciones</h2>
+        {data?.errors.operaciones ? (
+          <p className={styles.empty}>{data.errors.operaciones}</p>
+        ) : operaciones.length === 0 ? (
+          <p className={styles.empty}>{loading ? "Cargando…" : "Sin operaciones para este período."}</p>
+        ) : (
+          <OperacionesTable items={operaciones} />
+        )}
+      </article>
     </section>
   );
 }

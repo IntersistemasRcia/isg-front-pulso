@@ -1,47 +1,98 @@
-import { formatCount, formatMoney, pickField, asNumber } from "@/lib/comercial/present";
+import {
+  formatCount,
+  formatMoney,
+  pickField,
+  asNumber,
+  type KpiDelta,
+} from "@/lib/comercial/present";
 import type { CrmRow } from "@/lib/crm/query";
+
+const percent = new Intl.NumberFormat("es-AR", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+const moneyFull = new Intl.NumberFormat("es-AR", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const NO_PREVIOUS = "sin datos de periodos anteriores";
 
 export type CrmKpi = {
   id: string;
   label: string;
   value: string;
-  foot: string | null;
+  /** Pie secundario (ej. cantidad de pedidos). */
+  detail: string | null;
+  delta: KpiDelta | null;
   tone: "total" | "facturada" | "pedidos" | "clientes";
 };
 
-export function mapResumenKpis(row: CrmRow | null): CrmKpi[] {
+function toneOf(delta: number): KpiDelta["tone"] {
+  if (delta > 0) return "up";
+  if (delta < 0) return "down";
+  return "flat";
+}
+
+function formatSigned(delta: number): string {
+  const sign = delta > 0 ? "+" : delta < 0 ? "-" : "";
+  return `${sign}${percent.format(Math.abs(delta))} %`;
+}
+
+function ratioDelta(current: unknown, previous: unknown): KpiDelta | null {
+  const actual = asNumber(current);
+  const base = asNumber(previous);
+  if (actual == null || base == null || base === 0) return null;
+  const delta = ((actual - base) / Math.abs(base)) * 100;
+  return { text: formatSigned(delta), tone: toneOf(delta) };
+}
+
+export function mapResumenKpis(row: CrmRow | null, previous: CrmRow | null = null): CrmKpi[] {
+  const comparable = previous != null;
+  const delta = (field: string) => {
+    if (!comparable) return null;
+    return ratioDelta(pickField(row, field), pickField(previous, field));
+  };
   const pedidos = formatCount(pickField(row, "CantidadPedidos"));
+
   return [
     {
       id: "total",
       label: "Venta comercial total",
       value: formatMoney(pickField(row, "VentaComercialTotal")),
-      foot: null,
+      detail: null,
+      delta: delta("VentaComercialTotal"),
       tone: "total",
     },
     {
       id: "facturada",
       label: "Venta facturada neta",
       value: formatMoney(pickField(row, "VentaConComprobante")),
-      foot: null,
+      detail: null,
+      delta: delta("VentaConComprobante"),
       tone: "facturada",
     },
     {
       id: "pedidos",
       label: "Pedidos en cuenta del cliente",
       value: formatMoney(pickField(row, "VentaSinComprobante")),
-      foot: pedidos === "—" ? "—" : `${pedidos} pedidos`,
+      detail: pedidos === "—" ? null : `${pedidos} pedidos`,
+      delta: delta("VentaSinComprobante"),
       tone: "pedidos",
     },
     {
       id: "clientes",
       label: "Clientes con operación",
       value: formatCount(pickField(row, "ClientesConOperacion")),
-      foot: null,
+      detail: null,
+      delta: delta("ClientesConOperacion"),
       tone: "clientes",
     },
   ];
 }
+
+export { NO_PREVIOUS };
 
 export type EvolucionPunto = {
   dia: string;
@@ -87,6 +138,63 @@ function mapImporteBarras(rows: CrmRow[], labelField: string, fallback: string):
     zona: String(pickField(row, labelField) ?? pickField(row, "Descripcion") ?? `${fallback} ${index + 1}`),
     importe: asNumber(pickField(row, "VentaComercialTotal")) ?? 0,
   }));
+}
+
+export type OperacionEstado = "Facturada" | "En cuenta";
+
+export type OperacionItem = {
+  id: string;
+  fecha: string;
+  tipo: string;
+  numeroPedidoErp: string;
+  comprobante: string;
+  cliente: string;
+  vendedor: string;
+  zona: string;
+  monto: string;
+  estado: OperacionEstado;
+};
+
+/** Formato dinero completo para tablas de detalle (sin K/M). */
+export function formatMoneyFull(value: unknown): string {
+  const amount = asNumber(value);
+  if (amount == null) return "—";
+  return `$ ${moneyFull.format(amount)}`;
+}
+
+export function mapOperaciones(rows: CrmRow[]): OperacionItem[] {
+  return rows.map((row, index) => {
+    const esFacturada = asNumber(pickField(row, "EsFacturada"));
+    const estado: OperacionEstado = esFacturada === 1 ? "Facturada" : "En cuenta";
+    const numero = String(pickField(row, "NumeroPedidoERP") ?? "").trim() || "—";
+    return {
+      id: `${numero}-${index}`,
+      fecha: formatFechaPedido(pickField(row, "FechaPedido")),
+      tipo: String(pickField(row, "ClaseMovimiento") ?? "—").trim() || "—",
+      numeroPedidoErp: numero,
+      comprobante: "—",
+      cliente: String(pickField(row, "Cliente") ?? "—").trim() || "—",
+      vendedor: String(pickField(row, "Vendedor") ?? "—").trim() || "—",
+      zona: String(pickField(row, "Zona") ?? "—").trim() || "—",
+      monto: formatMoneyFull(pickField(row, "Total")),
+      estado,
+    };
+  });
+}
+
+function formatFechaPedido(value: unknown): string {
+  if (value == null) return "—";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${pad(value.getDate())}/${pad(value.getMonth() + 1)}/${value.getFullYear()} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  }
+  const text = String(value).trim();
+  if (!text) return "—";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/.exec(text);
+  if (iso) {
+    const time = iso[4] && iso[5] ? ` ${iso[4]}:${iso[5]}` : "";
+    return `${iso[3]}/${iso[2]}/${iso[1]}${time}`;
+  }
+  return text;
 }
 
 function formatDayLabel(value: unknown): string {
