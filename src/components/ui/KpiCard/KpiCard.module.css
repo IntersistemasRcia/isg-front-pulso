@@ -58,6 +58,54 @@
   min-height: 84px;
 }
 
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.headBody {
+  min-width: 0;
+}
+
+.iconBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 1.25rem;
+  flex: none;
+}
+
+.sm .iconBadge {
+  width: 30px;
+  height: 30px;
+  font-size: 1.05rem;
+  border-radius: 8px;
+}
+
+.iconBlue {
+  background: #e7f0ff;
+  color: #2f6fed;
+}
+
+.iconGreen {
+  background: #e7f6ee;
+  color: #1a9a55;
+}
+
+.iconOrange {
+  background: #fff1e6;
+  color: #e07a1f;
+}
+
+.iconPurple {
+  background: #f0e9ff;
+  color: #6b4fd8;
+}
+
 .label {
   margin: 0;
   font-size: 13px;
