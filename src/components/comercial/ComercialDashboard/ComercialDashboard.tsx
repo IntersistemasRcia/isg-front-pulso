@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { MediosPagoChart } from "@/components/comercial/MediosPagoChart/MediosPagoChart";
 import { SucursalBars } from "@/components/comercial/SucursalBars/SucursalBars";
-import { KpiCard, KpiGrid, KpiSection, kpiDeltaClass } from "@/components/ui";
+import { KpiCard, KpiGrid, KpiSection, kpiDeltaClass, type KpiIcon, type KpiIconTone } from "@/components/ui";
 import { loadComercial, type ComercialSnapshot } from "@/lib/comercial/query";
 import {
   formatPeriodLabel,
@@ -26,6 +26,16 @@ import {
   type KpiCardData,
 } from "@/lib/comercial/present";
 import styles from "./ComercialDashboard.module.css";
+
+const VENTAS_ICONS: Record<string, { icon: KpiIcon; iconTone: KpiIconTone }> = {
+  netas: { icon: "chart", iconTone: "purple" },
+  totales: { icon: "cart", iconTone: "orange" },
+  margen: { icon: "percent", iconTone: "green" },
+  comprobantes: { icon: "document", iconTone: "blue" },
+  unidades: { icon: "box", iconTone: "blue" },
+  "ticket-comercial": { icon: "tag", iconTone: "orange" },
+  "ticket-fiscal": { icon: "receiptLong", iconTone: "orange" },
+};
 
 function kpiFoot(kpi: KpiCardData, showFoot: boolean) {
   if (!showFoot) return undefined;
@@ -186,6 +196,8 @@ export function ComercialDashboard() {
             label={kpi.label}
             value={kpi.value}
             valueTone={kpi.valueTone}
+            icon={VENTAS_ICONS[kpi.id]?.icon}
+            iconTone={VENTAS_ICONS[kpi.id]?.iconTone}
             foot={kpiFoot(kpi, showFoot)}
             loading={kpiLoading}
           />
@@ -200,6 +212,8 @@ export function ComercialDashboard() {
               label={kpi.label}
               value={kpi.value}
               size="sm"
+              icon={VENTAS_ICONS[kpi.id]?.icon}
+              iconTone={VENTAS_ICONS[kpi.id]?.iconTone}
               foot={kpiFoot(kpi, showFoot)}
               loading={kpiLoading}
             />

@@ -16,6 +16,8 @@ export type {
   KpiCardSize,
   KpiCardTone,
   KpiGridProps,
+  KpiIcon,
+  KpiIconTone,
   KpiSectionProps,
   KpiValueTone,
 } from "./KpiCard/KpiCard";

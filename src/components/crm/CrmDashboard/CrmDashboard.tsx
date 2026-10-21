@@ -13,7 +13,7 @@ import {
   type CrmFilters,
   type CrmSnapshot,
 } from "@/lib/crm/query";
-import { KpiCard, KpiGrid, kpiDeltaClass } from "@/components/ui";
+import { KpiCard, KpiGrid, kpiDeltaClass, type KpiIcon, type KpiIconTone } from "@/components/ui";
 import {
   mapClasificaciones,
   mapCondicionesIva,
@@ -40,6 +40,13 @@ const ESTADOS: { id: CrmEstado; label: string }[] = [
   { id: "CON", label: "CON" },
   { id: "SIN", label: "SIN" },
 ];
+
+const CRM_ICONS: Record<string, { icon: KpiIcon; iconTone: KpiIconTone }> = {
+  total: { icon: "cart", iconTone: "blue" },
+  facturada: { icon: "document", iconTone: "green" },
+  pedidos: { icon: "receipt", iconTone: "orange" },
+  clientes: { icon: "groups", iconTone: "purple" },
+};
 
 function kpiFoot(kpi: CrmKpi, showFoot: boolean) {
   if (!showFoot) return undefined;
@@ -311,6 +318,8 @@ export function CrmDashboard() {
             label={kpi.label}
             value={kpi.value}
             tone={kpi.tone}
+            icon={CRM_ICONS[kpi.id]?.icon}
+            iconTone={CRM_ICONS[kpi.id]?.iconTone}
             foot={kpiFoot(kpi, showFoot)}
             loading={kpiLoading}
           />

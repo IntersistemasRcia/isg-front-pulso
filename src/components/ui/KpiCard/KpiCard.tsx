@@ -1,9 +1,48 @@
 import type { ReactNode } from "react";
+import BarChart from "@mui/icons-material/BarChart";
+import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
+import GroupsOutlined from "@mui/icons-material/GroupsOutlined";
+import Inventory2Outlined from "@mui/icons-material/Inventory2Outlined";
+import LocalOfferOutlined from "@mui/icons-material/LocalOfferOutlined";
+import Percent from "@mui/icons-material/Percent";
+import ReceiptLongOutlined from "@mui/icons-material/ReceiptLongOutlined";
+import ReceiptOutlined from "@mui/icons-material/ReceiptOutlined";
+import ShoppingCartOutlined from "@mui/icons-material/ShoppingCartOutlined";
 import styles from "./KpiCard.module.css";
 
 export type KpiValueTone = "up" | "down" | "flat";
 export type KpiCardTone = "default" | "total" | "facturada" | "pedidos" | "clientes";
 export type KpiCardSize = "md" | "sm";
+export type KpiIcon =
+  | "cart"
+  | "document"
+  | "receipt"
+  | "groups"
+  | "chart"
+  | "percent"
+  | "box"
+  | "tag"
+  | "receiptLong";
+export type KpiIconTone = "blue" | "green" | "orange" | "purple";
+
+const kpiIcons: Record<KpiIcon, ReactNode> = {
+  cart: <ShoppingCartOutlined fontSize="inherit" />,
+  document: <DescriptionOutlined fontSize="inherit" />,
+  receipt: <ReceiptOutlined fontSize="inherit" />,
+  groups: <GroupsOutlined fontSize="inherit" />,
+  chart: <BarChart fontSize="inherit" />,
+  percent: <Percent fontSize="inherit" />,
+  box: <Inventory2Outlined fontSize="inherit" />,
+  tag: <LocalOfferOutlined fontSize="inherit" />,
+  receiptLong: <ReceiptLongOutlined fontSize="inherit" />,
+};
+
+const iconToneClass: Record<KpiIconTone, string> = {
+  blue: styles.iconBlue,
+  green: styles.iconGreen,
+  orange: styles.iconOrange,
+  purple: styles.iconPurple,
+};
 
 export type KpiCardProps = {
   label: string;
@@ -11,6 +50,8 @@ export type KpiCardProps = {
   foot?: ReactNode;
   tone?: KpiCardTone;
   valueTone?: KpiValueTone;
+  icon?: KpiIcon;
+  iconTone?: KpiIconTone;
   size?: KpiCardSize;
   loading?: boolean;
 };
@@ -37,6 +78,8 @@ export function KpiCard({
   foot,
   tone = "default",
   valueTone,
+  icon,
+  iconTone = "blue",
   size = "md",
   loading = false,
 }: KpiCardProps) {
@@ -57,8 +100,17 @@ export function KpiCard({
 
   return (
     <article className={classes}>
-      <h2 className={styles.label}>{label}</h2>
-      <p className={valueClasses}>{loading ? "…" : value}</p>
+      <div className={styles.head}>
+        {icon ? (
+          <span className={[styles.iconBadge, iconToneClass[iconTone]].join(" ")} aria-hidden>
+            {kpiIcons[icon]}
+          </span>
+        ) : null}
+        <div className={styles.headBody}>
+          <h2 className={styles.label}>{label}</h2>
+          <p className={valueClasses}>{loading ? "…" : value}</p>
+        </div>
+      </div>
       {foot ? <p className={styles.foot}>{foot}</p> : null}
     </article>
   );
