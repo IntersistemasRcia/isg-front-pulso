@@ -9,8 +9,9 @@ import { ConversationProvider } from "@/components/providers/ConversationProvide
 import styles from "./dashboard.module.css";
 
 function moduleTitle(pathname: string): string {
-  if (pathname.startsWith("/dashboard/comercial")) return "Dashboard Comercial";
-  if (pathname.startsWith("/dashboard/crm")) return "Resumen CRM Comercial";
+  if (pathname.startsWith("/dashboard/comercial")) return "Ventas";
+  if (pathname.startsWith("/dashboard/finanzas")) return "Finanzas";
+  if (pathname.startsWith("/dashboard/crm")) return "CRM";
   if (pathname.startsWith("/dashboard/settings/ia")) return "Configuración IA";
   return "Chat";
 }

@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import AccountBalanceOutlined from "@mui/icons-material/AccountBalanceOutlined";
+import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
+import HandshakeOutlined from "@mui/icons-material/HandshakeOutlined";
+import History from "@mui/icons-material/History";
+import ShowChart from "@mui/icons-material/ShowChart";
+import Tune from "@mui/icons-material/Tune";
 import { MyButtons } from "@/utils/MyButtons";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useConversation } from "@/components/providers/ConversationProvider";
@@ -19,6 +25,17 @@ function formatHistoryDate(value: string | null): string {
   });
 }
 
+function NavLabel({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  return (
+    <span className={styles.navLabel}>
+      <span className={styles.navIcon} aria-hidden>
+        {icon}
+      </span>
+      <span>{children}</span>
+    </span>
+  );
+}
+
 export function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -32,7 +49,7 @@ export function DashboardSidebar() {
     startNewConversation,
     deleteConversation,
   } = useConversation();
-  const [historyOpen, setHistoryOpen] = useState(pathname === "/dashboard");
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   function handleLogout() {
     logout();
@@ -59,7 +76,49 @@ export function DashboardSidebar() {
       </div>
 
       <div className={styles.menu}>
+        <nav className={styles.nav} aria-label="Dashboard">
+          <p className={styles.groupLabel}>Dashboard</p>
+          <Link
+            href="/dashboard/comercial"
+            className={[
+              styles.navItem,
+              pathname.startsWith("/dashboard/comercial") ? styles.navItemActive : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <NavLabel icon={<ShowChart fontSize="inherit" />}>Ventas</NavLabel>
+          </Link>
+          <Link
+            href="/dashboard/finanzas"
+            className={[
+              styles.navItem,
+              pathname.startsWith("/dashboard/finanzas") ? styles.navItemActive : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <NavLabel icon={<AccountBalanceOutlined fontSize="inherit" />}>Finanzas</NavLabel>
+          </Link>
+        </nav>
+
+        <nav className={styles.nav} aria-label="CRM">
+          <p className={styles.groupLabel}>CRM</p>
+          <Link
+            href="/dashboard/crm"
+            className={[
+              styles.navItem,
+              pathname.startsWith("/dashboard/crm") ? styles.navItemActive : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <NavLabel icon={<HandshakeOutlined fontSize="inherit" />}>CRM</NavLabel>
+          </Link>
+        </nav>
+
         <nav className={styles.nav} aria-label="Chat">
+          <p className={styles.groupLabel}>Chat</p>
           <Link
             href="/dashboard"
             className={[
@@ -69,7 +128,7 @@ export function DashboardSidebar() {
               .filter(Boolean)
               .join(" ")}
           >
-            Chat
+            <NavLabel icon={<ChatBubbleOutline fontSize="inherit" />}>Chat</NavLabel>
           </Link>
 
           <button
@@ -78,7 +137,7 @@ export function DashboardSidebar() {
             aria-expanded={historyOpen}
             onClick={() => setHistoryOpen((open) => !open)}
           >
-            <span>Historial</span>
+            <NavLabel icon={<History fontSize="inherit" />}>Historial</NavLabel>
             <span className={historyOpen ? styles.chevronOpen : styles.chevron} aria-hidden>
               ▾
             </span>
@@ -166,34 +225,7 @@ export function DashboardSidebar() {
               .filter(Boolean)
               .join(" ")}
           >
-            Configuración IA
-          </Link>
-        </nav>
-
-        <div className={styles.segmentLine} />
-
-        <nav className={styles.nav} aria-label="Módulos">
-          <Link
-            href="/dashboard/comercial"
-            className={[
-              styles.navItem,
-              pathname.startsWith("/dashboard/comercial") ? styles.navItemActive : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            Comercial
-          </Link>
-          <Link
-            href="/dashboard/crm"
-            className={[
-              styles.navItem,
-              pathname.startsWith("/dashboard/crm") ? styles.navItemActive : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            CRM
+            <NavLabel icon={<Tune fontSize="inherit" />}>Configuración IA</NavLabel>
           </Link>
         </nav>
       </div>
