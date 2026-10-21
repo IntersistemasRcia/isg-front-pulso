@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import AccountBalanceOutlined from "@mui/icons-material/AccountBalanceOutlined";
-import ChatBubbleOutline from "@mui/icons-material/ChatBubbleOutline";
+import ChatBubbleOutlined from "@mui/icons-material/ChatBubbleOutlined";
 import HandshakeOutlined from "@mui/icons-material/HandshakeOutlined";
 import History from "@mui/icons-material/History";
 import ShowChart from "@mui/icons-material/ShowChart";
@@ -128,7 +128,7 @@ export function DashboardSidebar() {
               .filter(Boolean)
               .join(" ")}
           >
-            <NavLabel icon={<ChatBubbleOutline fontSize="inherit" />}>Chat</NavLabel>
+            <NavLabel icon={<ChatBubbleOutlined fontSize="inherit" />}>Chat</NavLabel>
           </Link>
 
           <button
