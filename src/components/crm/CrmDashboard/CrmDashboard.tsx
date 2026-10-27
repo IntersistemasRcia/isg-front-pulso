@@ -9,7 +9,6 @@ import {
   loadCrm,
   loadCrmCatalogs,
   type CatalogOption,
-  type CrmEstado,
   type CrmFilters,
   type CrmSnapshot,
 } from "@/lib/crm/query";
@@ -34,12 +33,6 @@ import {
   type PeriodPreset,
 } from "@/lib/comercial/period";
 import styles from "./CrmDashboard.module.css";
-
-const ESTADOS: { id: CrmEstado; label: string }[] = [
-  { id: "TODOS", label: "TODOS" },
-  { id: "CON", label: "CON" },
-  { id: "SIN", label: "SIN" },
-];
 
 const CRM_ICONS: Record<string, { icon: KpiIcon; iconTone: KpiIconTone }> = {
   total: { icon: "cart", iconTone: "blue" },
@@ -76,7 +69,6 @@ export function CrmDashboard() {
   const [range, setRange] = useState<DateRange>(() => rangeForPreset("esteMes"));
   const [customDesde, setCustomDesde] = useState(() => toDateInputValue(rangeForPreset("esteMes").desde));
   const [customCorte, setCustomCorte] = useState(() => toDateInputValue(rangeForPreset("esteMes").hasta));
-  const [estado, setEstado] = useState<CrmEstado>("TODOS");
   const [codigoZona, setCodigoZona] = useState<number | null>(null);
   const [codigoVendedor, setCodigoVendedor] = useState<number | null>(null);
   const [zonas, setZonas] = useState<CatalogOption[]>([]);
@@ -112,7 +104,6 @@ export function CrmDashboard() {
     void load(
       {
         range: rangeForPreset("esteMes"),
-        estado: "TODOS",
         codigoZona: null,
         codigoVendedor: null,
       },
@@ -143,7 +134,6 @@ export function CrmDashboard() {
   function currentFilters(patch: Partial<CrmFilters> = {}): CrmFilters {
     return {
       range,
-      estado,
       codigoZona,
       codigoVendedor,
       ...patch,
@@ -230,25 +220,6 @@ export function CrmDashboard() {
             </label>
           </div>
         ) : null}
-
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>Estado</span>
-          <select
-            className={styles.control}
-            value={estado}
-            onChange={(event) => {
-              const next = event.target.value as CrmEstado;
-              setEstado(next);
-              void load(currentFilters({ estado: next }), preset);
-            }}
-          >
-            {ESTADOS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
 
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Zona</span>
