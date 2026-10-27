@@ -1,6 +1,6 @@
 # ISG Pulso — Estándar de metadatos de Stored Procedures
 
-**Versión:** 1.2  
+**Versión:** 1.3  
 **Proyecto:** ISG Pulso  
 **Objetivo:** Normalizar el comentario `Pulso` en cada SP para que el LLM seleccione y ejecute la consulta correcta.
 
@@ -52,7 +52,7 @@ Consultas muy simples:
 -- Pulso: ...
 ```
 
-Tope de referencia: **~1000 caracteres útiles** (límite del parser de arquitectura).
+Tope de referencia: **~3000 caracteres útiles** (límite del parser de arquitectura en isg-api-pulso; front `PULSO_DESC_PROMPT_MAX`).
 
 ---
 
@@ -182,6 +182,56 @@ INTERACCIÓN: si faltan fechas, solicitar el período; no pedir el formato técn
 - Qué preguntar si falta información.
 - Qué opciones ofrecer (enums en lenguaje de negocio).
 - Si el usuario da un **nombre** y el SP pide **ID**: usar un SP CATALOGO antes; no pedir códigos internos.
+
+### 9.1 Nombres canónicos `Catalogo_*` (y `Get*` legado)
+
+Los maestros de listado / resolución nombre→ID viven en SQL como:
+
+```text
+sp_ISG_Vision_Catalogo_Areas
+sp_ISG_Vision_Catalogo_Cajas
+sp_ISG_Vision_Catalogo_ConceptosCaja
+sp_ISG_Vision_Catalogo_Departamentos
+sp_ISG_Vision_Catalogo_Localidades
+sp_ISG_Vision_Catalogo_Marcas
+sp_ISG_Vision_Catalogo_MediosPago
+sp_ISG_Vision_Catalogo_Provincias
+sp_ISG_Vision_Catalogo_Rubros
+sp_ISG_Vision_Catalogo_Sectores
+sp_ISG_Vision_Catalogo_Subrubros
+sp_ISG_Vision_Catalogo_Sucursales
+sp_ISG_Vision_Catalogo_Vendedores
+sp_ISG_Vision_Catalogo_Zonas
+```
+
+También pueden existir nombres legado `sp_ISG_Vision_Get*` (p. ej. GetMarcas). El ranking del front reconoce **Get o Catalogo**; la señal primaria es `TIPO: CATALOGO` en el comentario Pulso.
+
+**Mínimo prioritario** con comentario Pulso completo: Rubros, Subrubros, Sucursales, Marcas.
+
+Plantilla mínima para cada uno:
+
+```sql
+/*-- Pulso:
+TIPO: CATALOGO.
+PROPÓSITO: lista el maestro y permite resolver el ID a partir del nombre o código de negocio.
+USAR CUANDO: el usuario da un nombre (sucursal, rubro, marca, etc.) y el informe pide ID/código.
+NO USAR PARA: informes de ventas, márgenes, stock o reposición.
+INTERACCIÓN: ejecutar sin inventar IDs; si hay varias filas posibles, pedir confirmación en lenguaje de negocio.
+*/
+```
+
+Sin este bloque, el SP puede existir en SQL y aun así quedar fuera del topK o no usarse para resolver IDs.
+
+### 9.2 Reposición vs ventas / MoM
+
+`sp_ISG_Vision_reposicion_por_articulo` es de **reposición / compra** (típicamente `@DiasReposicion` obligatorio).
+
+| Pedido del usuario | SP adecuado |
+|--------------------|-------------|
+| Evolución, ranking, margen, MoM, totales de ventas | SPs de ventas / margen (granularidad ARTÍCULO, PERÍODO, etc.) |
+| Cuánto comprar, días de stock, stock objetivo, reposición | `reposicion_por_articulo` |
+
+No usar reposición para “¿creció o bajó el artículo?” ni ranking de ventas.
 
 ---
 

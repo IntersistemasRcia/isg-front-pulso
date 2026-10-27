@@ -39,7 +39,9 @@ El front reenvía el token del login (`Authorization: Bearer …`) en cada llama
 
 ## GET /SPs_arquitectura — respuesta slim (default)
 
-Fuente: [SqlEjecutorService.cs](https://github.com/IntersistemasRcia/isg-api-pulso/blob/develop/isg-api-pulso/Services/SqlEjecutorService.cs) (`sys.procedures` + `sys.parameters` + comentario `-- Pulso:` / `/*-- Pulso:` en `sys.sql_modules`, max 1000 chars).
+Fuente: [SqlEjecutorService.cs](https://github.com/IntersistemasRcia/isg-api-pulso/blob/develop/isg-api-pulso/Services/SqlEjecutorService.cs) (`sys.procedures` + `sys.parameters` + comentario `-- Pulso:` / `/*-- Pulso:` en `sys.sql_modules`, max 3000 chars).
+
+**Cambio requerido en backend:** en `TryExtractPulsoComment`, `const int maxLen = 1000` → `3000`. Actualizar el comentario de `SpArquitecturaDto.Descripcion` (aún puede decir “máx 500”). Sin ese deploy, el API seguirá truncando a 1000 aunque el front acepte 3000.
 
 ```json
 [
@@ -89,7 +91,7 @@ El front (`normalizeArquitectura.ts`): si `tieneDefault === true` → trata el p
 
 ### Convención de descripción en SQL
 
-En el cuerpo del SP, comentario Pulso (línea **o** bloque). Contenido útil **máx. 1000 caracteres** (el API colapsa whitespace).
+En el cuerpo del SP, comentario Pulso (línea **o** bloque). Contenido útil **máx. 3000 caracteres** (el API colapsa whitespace; `TryExtractPulsoComment` → `maxLen = 3000`).
 
 ```sql
 -- Pulso: <texto de negocio>
@@ -107,7 +109,7 @@ Si no está claro, ofrecer esas opciones en lenguaje de negocio; no decir que no
 
 Reglas de redacción:
 
-- Meta ~700–1000 chars de contenido útil (tope 1000).
+- Meta ~1500–3000 chars de contenido útil (tope 3000).
 - Primero negocio + params/enums; si sobra presupuesto, enriquecer con resultado y contexto técnico **traducido a negocio** (tablas/joins explicados).
 - SP sin params: decirlo explícito («ejecutar tal cual; no pedir filtros»).
 - Formato válido: `-- Pulso:` (una línea) o `/*-- Pulso: … */`.
@@ -120,7 +122,7 @@ Si el SP no tiene el comentario, la API debe devolver `descripcion: null` (sin e
 El front (`normalizeArquitectura.ts` / `catalog.ts`):
 
 - Prefiere `descripcion` del API; si falta, `humanizeSpDescription`.
-- Incluye hasta **1000** chars de descripción en el prompt (`full`); menos en `compact`/`minimal`.
+- Incluye hasta **3000** chars de descripción en el prompt (`full`); menos en `compact`/`minimal`.
 - Usa `parametros` del API (filtra `esOutput: true` y denylist de variables de cuerpo).
 - **No mete `CodigoSQL` en el prompt** → menos tokens.
 - Fallback: si llega `?includeSql=true`, parsea solo la firma `CREATE PROC … AS`.
@@ -228,7 +230,7 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 | Tool OK pero sin texto | Cuota Gemini free (429) en el 2.º paso |
 | Timeout 25s | SQL lento o API Pulso no responde |
 | Parámetros inventados (LikeTerm) | Catálogo viejo en localStorage: borrar `pulso.sp.arquitectura*` |
-| Sin `descripcion` en arquitectura | Comentario `-- Pulso:` / `/*-- Pulso:` ausente, o API aún no parsea bloque/1000 chars en `sys.sql_modules` |
+| Sin `descripcion` en arquitectura | Comentario `-- Pulso:` / `/*-- Pulso:` ausente, o API aún no parsea bloque/3000 chars en `sys.sql_modules` |
 | «No tengo informe específico» al filtrar el mismo listado | Descripción sin significados de enum, o LLM ignora filtros; ver systemPrompt «Filtros del mismo informe» + limpiar LS |
 | «No tengo acceso al catálogo de marcas» | `GetMarcas` ausente del slim (0 params / INNER JOIN) o el LLM no llamó tool; verificar `/SPs_arquitectura` y limpiar LS `pulso.sp.arquitectura.v3` |
 | «No hay ventas de junio» y luego sí con año | Alucinación sin tool o mes sin año; el prompt fuerza año calendario actual + tool antes de negar |
@@ -375,7 +377,7 @@ D) Normalizar contenido:
    - Trim
    - Colapsar whitespace: reemplazar secuencias \s+ por un solo espacio
    - Si vacío → null
-   - Si length > 1000 → Truncate a 1000 (no cortar a mitad de palabra si es fácil; si no, hard truncate)
+   - Si length > 3000 → Truncate a 3000 (no cortar a mitad de palabra si es fácil; si no, hard truncate)
 E) Compat: sigue funcionando el viejo formato de una sola línea "-- Pulso: …"
 
 NO soportar / no priorizar:
@@ -393,8 +395,8 @@ Respuesta slim camelCase por ítem:
 
 Tests / aceptación manual:
 1) SP con -- Pulso: una línea corta → descripcion = ese texto
-2) SP con /*-- Pulso: … multilínea … */ (incl. saltos y espacios) → descripcion colapsada, ≤1000
-3) SP con bloque >1000 chars útiles → descripcion length === 1000
+2) SP con /*-- Pulso: … multilínea … */ (incl. saltos y espacios) → descripcion colapsada, ≤3000
+3) SP con bloque >3000 chars útiles → descripcion length === 3000
 4) SP sin comentario Pulso → descripcion null, HTTP 200
 5) definition null → descripcion null, sin 500
 6) SP solo con doc /* ... */ sin prefijo Pulso → descripcion null
@@ -424,20 +426,20 @@ Elegí el formato que maximice claridad. Ambos son válidos para el parser.
 ══════════════════════════════════════
 PRESUPUESTO DE CARACTERES (CRÍTICO)
 ══════════════════════════════════════
-- Tope duro del contenido útil: 1000 caracteres (sin contar /*-- Pulso: / -- Pulso: / */).
-- Meta: llenar entre 700 y 1000 chars siempre que haya material útil en el SP.
+- Tope duro del contenido útil: 3000 caracteres (sin contar /*-- Pulso: / -- Pulso: / */).
+- Meta: llenar entre 1500 y 3000 chars siempre que haya material útil en el SP.
 - Prioridad de llenado (en orden; no saltees lo alto por lo bajo):
   P0) Qué hace + cuándo usarlo (negocio).
   P1) Parámetros (o “sin parámetros”) + enums con literales exactos + defaults.
   P2) Cómo filtrar / reusar / qué ofrecer si hay duda; qué pedir si faltan datos.
   P3) Columnas/resultado de negocio que devuelve (si se deduce del SELECT/comentarios).
-  P4) Contexto técnico TRADUCIDO A NEGOCIO (solo si aún estás bajo ~900–1000 chars):
+  P4) Contexto técnico TRADUCIDO A NEGOCIO (solo si aún estás bajo ~2500–3000 chars):
       orígenes de datos, relaciones, reglas especiales (NC con signo negativo, descuentos
       globales, impuestos internos dentro de no gravado, etc.).
       Podés nombrar tablas/joins si aportan, pero SIEMPRE explicá qué representan en negocio
       (ej. «cabecera de ventas/pedidos», «detalle impositivo por línea», «maestro de clientes»).
-- Si con P0–P3 ya rozás 1000, NO agregues P4.
-- Si estás bajo ~700 y el SP tiene cuerpo rico, SÍ expandí con P3/P4 hasta acercarte a 900–1000.
+- Si con P0–P3 ya rozás 3000, NO agregues P4.
+- Si estás bajo ~1500 y el SP tiene cuerpo rico, SÍ expandí con P3/P4 hasta acercarte a 2500–3000.
 - NO inventes hechos que no estén en el SP o sus comentarios.
 - NO armes mapas de sinónimos («usuario dice X → valor Y»). El LLM interpreta desde significados.
 
@@ -495,7 +497,7 @@ ESTILO
 CHECKLIST ANTES DE RESPONDER
 ══════════════════════════════════════
 [ ] Solo el comentario Pulso (línea o bloque), nada más
-[ ] Contenido ≤ 1000 chars; ideal ≥ 700 si el SP da material
+[ ] Contenido ≤ 3000 chars; ideal ≥ 700 si el SP da material
 [ ] Formato: -- Pulso: …  O  /*-- Pulso: … */
 [ ] Si 0 params de entrada: dicho explícito + «ejecutar sin pedir filtros»
 [ ] Si hay params: todos listados; obligatorios/opcionales/defaults correctos

@@ -89,7 +89,7 @@ export function buildLargePreviewPayload(
     avisoUsuario: [
       exactBit,
       size.totalExact
-        ? `Ejemplo: «Existen ${size.totalRows} marcas; te muestro las primeras ${uiRows.length}. Si querés todas, pedime el Excel; si preferís, filtramos por nombre.»`
+        ? `Ejemplo: «Existen ${size.totalRows} registros; te muestro las primeras ${uiRows.length}. Si querés todas, pedime el Excel; si preferís, filtramos por nombre.»`
         : "Ofrecé filtrar o pedir el listado completo en Excel (modoResultado=completo) para el total real.",
       filterBit,
       "NO listes filas en el texto. NO ofrezcas Excel todavía (no hay botón hasta modo completo). NO digas UI/HTML/tool.",
@@ -134,9 +134,9 @@ export function buildCompleteListadoPayload(
         (exportId
           ? `; abajo hay un botón para bajar el Excel con las ${total}.`
           : "."),
-      `Ejemplo: «Existen ${total} marcas; te muestro las primeras ${uiRows.length}. Si querés todas, bajá el Excel.»`,
+      `Ejemplo: «Existen ${total} registros; te muestro las primeras ${uiRows.length}. Si querés todas, bajá el Excel.»`,
       filterBit,
-      "NO digas 51 ni otro total. NO listes marcas en el texto. NO digas UI/HTML/tool.",
+      "NO digas 51 ni otro total. NO listes filas en el texto. NO digas UI/HTML/tool.",
       UI_TABLE_AVISO,
     ].join(" "),
   };

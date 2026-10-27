@@ -8,11 +8,8 @@ import {
 
 export type CrmRow = Record<string, unknown>;
 
-export type CrmEstado = "TODOS" | "CON" | "SIN";
-
 export type CrmFilters = {
   range: DateRange;
-  estado: CrmEstado;
   codigoZona: number | null;
   codigoVendedor: number | null;
 };
@@ -69,7 +66,8 @@ export function crmParametros(filters: CrmFilters): Record<string, unknown> {
   const parametros: Record<string, unknown> = {
     FechaDesde: formatPulsoDay(filters.range.desde),
     FechaCorte: formatPulsoDay(filters.range.hasta),
-    EstadoFacturacion: filters.estado,
+    // El dashboard ya no filtra por estado; los SP siguen exigiendo el parámetro.
+    EstadoFacturacion: "TODOS",
   };
   if (filters.codigoZona != null) parametros.CodigoZona = filters.codigoZona;
   if (filters.codigoVendedor != null) parametros.CodigoVendedor = filters.codigoVendedor;
