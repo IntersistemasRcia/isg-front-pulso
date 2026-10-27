@@ -28,6 +28,12 @@ import {
   slicePreviewRows,
 } from "@/lib/pulso/tablePreview";
 import { toEjecutarConsultaModelOutput } from "@/lib/pulso/toEjecutarConsultaModelOutput";
+import {
+  appendMasterMismatchHint,
+  detectMasterMismatch,
+  looksLikeMasterListSp,
+  pickMasterCatalogAlternatives,
+} from "@/lib/pulso/masterFilterPolicy";
 
 const parametroItemSchema = z.object({
   nombre: z
@@ -156,6 +162,25 @@ function spUiTitle(
 }
 
 /**
+ * Anexa MASTER_MISMATCH_HINT si filas de dimensión no calzan con el pedido del usuario.
+ */
+function annotateMasterMismatch(
+  payload: Record<string, unknown>,
+  userQueryContext: string | undefined,
+  parametros: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!userQueryContext?.trim() || payload.ok !== true) return payload;
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  if (!rows.length) return payload;
+  const mismatch = detectMasterMismatch({
+    userText: userQueryContext,
+    parametros,
+    previewRows: rows,
+  });
+  return appendMasterMismatchHint(payload, mismatch);
+}
+
+/**
  * Tool principal del agente Pulso: consulta datos ERP vía isg-api-pulso.
  * Parámetros validados contra GET /SPs_arquitectura (sys.parameters).
  */
@@ -163,6 +188,7 @@ export function buildEjecutarConsultaPulsoTool(
   sessionToken: string,
   catalog: SpArquitectura[],
   truncateOptions?: TruncateToolResultOptions,
+  userQueryContext?: string,
 ) {
   return tool({
     description: [
@@ -200,6 +226,33 @@ export function buildEjecutarConsultaPulsoTool(
       );
 
       if (!nombreSp.startsWith("sp_ISG_Vision_")) {
+        // GetRubros / GetMarcas fantasmas sin prefijo: mismo gate que UNKNOWN_SP de maestros.
+        if (looksLikeMasterListSp(nombreSp) && catalog.length > 0) {
+          const alternatives = pickMasterCatalogAlternatives(nombreSp, catalog, 3);
+          logPulsoExec({
+            nombreSp,
+            ok: false,
+            ms: Date.now() - started,
+            code: "UNKNOWN_SP",
+            paramsKeys,
+          });
+          return {
+            ok: false,
+            code: "UNKNOWN_SP",
+            nombreSp,
+            message:
+              "Esa consulta no está en el catálogo. No reintentés el mismo nombre.",
+            alternativasCatalogo: alternatives.length ? alternatives : undefined,
+            avisoUsuario: [
+              "NO digas error de SQL ni que el procedimiento no existe.",
+              "Ese Get*/listado maestro no está en el catálogo (fantasma).",
+              alternatives.length
+                ? `Ejecutá YA una candidata de alternativasCatalogo (${alternatives.join(", ")}); preferí Catalogo_* / Get* real con TIPO CATALOGO.`
+                : "Buscá en el catálogo un Catalogo_* o Get* real de ese maestro.",
+              "PROHIBIDO reintentar el mismo nombre. NO saltes al informe con un ID viejo del hilo.",
+            ].join(" "),
+          };
+        }
         logPulsoExec({
           nombreSp,
           ok: false,
@@ -219,10 +272,13 @@ export function buildEjecutarConsultaPulsoTool(
 
       // Solo ejecutar SPs presentes en el catálogo cacheado (evita 500 SQL por GetRubros fantasma).
       if (catalog.length > 0 && !catalogSp) {
-        const alternatives = selectRelevantSps(nombreSp, catalog, 3)
-          .map((sp) => getSpNombre(sp))
-          .filter(Boolean)
-          .slice(0, 3);
+        const masterLike = looksLikeMasterListSp(nombreSp);
+        const alternatives = masterLike
+          ? pickMasterCatalogAlternatives(nombreSp, catalog, 3)
+          : selectRelevantSps(nombreSp, catalog, 3)
+              .map((sp) => getSpNombre(sp))
+              .filter(Boolean)
+              .slice(0, 3);
         logPulsoExec({
           nombreSp,
           ok: false,
@@ -237,14 +293,23 @@ export function buildEjecutarConsultaPulsoTool(
           message:
             "Esa consulta no está en el catálogo. No reintentés el mismo nombre.",
           alternativasCatalogo: alternatives.length ? alternatives : undefined,
-          avisoUsuario: [
-            "NO digas error de SQL ni que el procedimiento no existe.",
-            "Esa consulta no está disponible en esta instancia.",
-            alternatives.length
-              ? "Elegí otra candidata del catálogo interno (o de alternativasCatalogo) que coincida con la intención, o pedí un dato de negocio (rubro, sucursal, fechas)."
-              : "Ofrecé 1–2 alternativas de negocio cercanas del catálogo rankeado o pedí aclarar el pedido.",
-            "NUNCA inventes un nombre de SP (GetRubros, GetMarcas, etc.) que no figure en el catálogo.",
-          ].join(" "),
+          avisoUsuario: masterLike
+            ? [
+                "NO digas error de SQL ni que el procedimiento no existe.",
+                "Ese Get*/listado maestro no está en el catálogo (fantasma).",
+                alternatives.length
+                  ? `Ejecutá YA una candidata de alternativasCatalogo (${alternatives.join(", ")}); preferí Catalogo_* / Get* real con TIPO CATALOGO.`
+                  : "Buscá en el catálogo un Catalogo_* o Get* real de ese maestro.",
+                "PROHIBIDO reintentar el mismo nombre. NO saltes al informe con un ID viejo del hilo.",
+              ].join(" ")
+            : [
+                "NO digas error de SQL ni que el procedimiento no existe.",
+                "Esa consulta no está disponible en esta instancia.",
+                alternatives.length
+                  ? "Elegí otra candidata del catálogo interno (o de alternativasCatalogo) que coincida con la intención, o pedí un dato de negocio (rubro, sucursal, fechas)."
+                  : "Ofrecé 1–2 alternativas de negocio cercanas del catálogo rankeado o pedí aclarar el pedido.",
+                "NUNCA inventes un nombre de SP (GetRubros, GetMarcas, etc.) que no figure en el catálogo.",
+              ].join(" "),
         };
       }
 
@@ -380,7 +445,11 @@ export function buildEjecutarConsultaPulsoTool(
             paramsKeys,
             rows: rows.length,
           });
-          return buildCompleteListadoPayload({ ...baseUi, allRows: rows });
+          return annotateMasterMismatch(
+            buildCompleteListadoPayload({ ...baseUi, allRows: rows }),
+            userQueryContext,
+            parametrosRecord,
+          );
         }
 
         // ── Grande (1ª pasada / probe): adelanto + total si el API dio COUNT ─
@@ -395,11 +464,15 @@ export function buildEjecutarConsultaPulsoTool(
             paramsKeys,
             rows: totalExact ? totalRows : previewRows.length,
           });
-          return buildLargePreviewPayload({
-            ...baseUi,
-            previewRows,
-            size: { totalRows, totalExact, atLeastRows },
-          });
+          return annotateMasterMismatch(
+            buildLargePreviewPayload({
+              ...baseUi,
+              previewRows,
+              size: { totalRows, totalExact, atLeastRows },
+            }),
+            userQueryContext,
+            parametrosRecord,
+          );
         }
 
         // ── Preview50 explícito ──────────────────────────────────────────────
@@ -413,11 +486,15 @@ export function buildEjecutarConsultaPulsoTool(
             paramsKeys,
             rows: totalExact ? totalRows : previewRows.length,
           });
-          return buildLargePreviewPayload({
-            ...baseUi,
-            previewRows,
-            size: { totalRows, totalExact, atLeastRows },
-          });
+          return annotateMasterMismatch(
+            buildLargePreviewPayload({
+              ...baseUi,
+              previewRows,
+              size: { totalRows, totalExact, atLeastRows },
+            }),
+            userQueryContext,
+            parametrosRecord,
+          );
         }
 
         // ── Resultado chico (≤50, no truncated) ──────────────────────────────
@@ -430,35 +507,43 @@ export function buildEjecutarConsultaPulsoTool(
         });
 
         if (rows.length <= RESULT_LARGE_THRESHOLD) {
-          return buildSmallListadoPayload({ ...baseUi, rows });
+          return annotateMasterMismatch(
+            buildSmallListadoPayload({ ...baseUi, rows }),
+            userQueryContext,
+            parametrosRecord,
+          );
         }
 
         // Defensa: dataset grande sin flags de truncate del API.
         const wide = countRowColumns(rows) > WIDE_COLUMN_THRESHOLD;
         const uiRows = slicePreviewRows(rows, UI_PREVIEW_MAX_ROWS);
-        return {
-          ok: true,
-          uiTable: true,
-          nombreSp,
-          rows: uiRows,
-          totalRows: rows.length,
-          totalExact: true,
-          mostrando: uiRows.length,
-          truncated: rows.length > uiRows.length,
-          columnCount: countRowColumns(rows),
-          warnings: warnings.length ? warnings : undefined,
-          avisoUsuario: [
-            UI_TABLE_AVISO,
-            `Hay ${rows.length} registros; en pantalla ves un adelanto.`,
-            "Para Excel completo pedí modoResultado=completo.",
-            wide
-              ? "Hay muchas columnas: se puede desplazar la tabla en pantalla."
-              : "",
-            "NO listes filas. NO digas UI/HTML/tool.",
-          ]
-            .filter(Boolean)
-            .join(" "),
-        };
+        return annotateMasterMismatch(
+          {
+            ok: true,
+            uiTable: true,
+            nombreSp,
+            rows: uiRows,
+            totalRows: rows.length,
+            totalExact: true,
+            mostrando: uiRows.length,
+            truncated: rows.length > uiRows.length,
+            columnCount: countRowColumns(rows),
+            warnings: warnings.length ? warnings : undefined,
+            avisoUsuario: [
+              UI_TABLE_AVISO,
+              `Hay ${rows.length} registros; en pantalla ves un adelanto.`,
+              "Para Excel completo pedí modoResultado=completo.",
+              wide
+                ? "Hay muchas columnas: se puede desplazar la tabla en pantalla."
+                : "",
+              "NO listes filas. NO digas UI/HTML/tool.",
+            ]
+              .filter(Boolean)
+              .join(" "),
+          },
+          userQueryContext,
+          parametrosRecord,
+        );
       } catch (error) {
         const message =
           error instanceof Error
@@ -537,13 +622,19 @@ export function buildListarCatalogoPulsoTool(catalog: SpArquitectura[]) {
 export function buildPulsoTools(
   sessionToken: string,
   catalog: SpArquitectura[] = [],
-  options?: { includeCatalogTool?: boolean; truncateOptions?: TruncateToolResultOptions },
+  options?: {
+    includeCatalogTool?: boolean;
+    truncateOptions?: TruncateToolResultOptions;
+    /** Pedido reciente del usuario (para MASTER_MISMATCH_HINT). */
+    userQueryContext?: string;
+  },
 ) {
   const tools = {
     ejecutarConsultaPulso: buildEjecutarConsultaPulsoTool(
       sessionToken,
       catalog,
       options?.truncateOptions,
+      options?.userQueryContext,
     ),
     ...(options?.includeCatalogTool && catalog.length > 0
       ? { listarCatalogoPulso: buildListarCatalogoPulsoTool(catalog) }

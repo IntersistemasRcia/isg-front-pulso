@@ -91,16 +91,29 @@ export function isTipoCatalogo(meta: ParsedPulsoMetadata): boolean {
 }
 
 /**
- * Nombre sugiere listado maestro: Catalogo_* o Get* + entidad.
+ * Entidades típicas de listados maestros (nombre SP). Extensible; no lista cerrada de negocio.
  * Señal secundaria; preferir TIPO:CATALOGO verificado en metadatos.
+ */
+const MASTER_ENTITY_IN_SP_NAME =
+  /marca|rubro|subrubro|sector|sucursal|vendedor|zona|cliente|articulo|artículo|medio.?pago|lista.?precio/i;
+
+/**
+ * Nombre sugiere listado maestro: Catalogo_* o Get* + entidad.
+ * Cubre GetRubros / GetSectores / Get_Marcas / sp_ISG_Vision_Get* genéricos.
  */
 export function isMasterListSpName(name: string): boolean {
   const n = name.toLowerCase();
   if (/catalogo_/i.test(n) || /_catalogo/i.test(n)) return true;
-  if (/getmarcas|getrubros|get_?marca|get_?rubro|get_?sucursal|get_?vendedor|get_?subrubro/i.test(n)) {
+  // Get* compacto o con guiones bajos (GetRubros, Get_Sectores, getmarcas)
+  if (/get_?(marcas?|rubros?|subrubros?|sectores?|sucursales?|vendedores?|zonas?|clientes?)/i.test(n)) {
     return true;
   }
-  if (/^sp_isg_vision_get/i.test(n) && /marca|rubro|cliente|sucursal|vendedor|subrubro|zona/i.test(n)) {
+  // Cualquier sp_ISG_Vision_Get* cuyo resto nombre una entidad maestra
+  if (/^sp_isg_vision_get/i.test(n) && MASTER_ENTITY_IN_SP_NAME.test(n)) {
+    return true;
+  }
+  // Get* suelto sin prefijo sp (fantasmas del modelo)
+  if (/^get[a-z0-9_]+$/i.test(n) && MASTER_ENTITY_IN_SP_NAME.test(n)) {
     return true;
   }
   return false;

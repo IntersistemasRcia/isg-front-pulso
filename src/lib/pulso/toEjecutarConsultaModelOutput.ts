@@ -65,6 +65,8 @@ function buildModelSummary(output: unknown): Record<string, unknown> {
 
   return {
     ok: true,
+    ...(typeof o.code === "string" ? { code: o.code } : {}),
+    ...(o.masterMismatch != null ? { masterMismatch: o.masterMismatch } : {}),
     hayTablaEnPantalla: o.uiTable === true,
     hayExcel,
     totalExact,
