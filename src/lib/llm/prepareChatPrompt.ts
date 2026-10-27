@@ -160,7 +160,11 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
   let chosenMode: PromptCatalogMode = definition?.promptMode ?? "full";
   let catalogInPrompt = true;
   let system = "";
-  let tools = buildPulsoTools(token, catalog, { truncateOptions });
+  const toolsOpts = {
+    truncateOptions,
+    userQueryContext,
+  };
+  let tools = buildPulsoTools(token, catalog, toolsOpts);
   let estimatedTokens = 0;
 
   if (budget != null) {
@@ -174,8 +178,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
           promptMode: mode,
         });
         tools = buildPulsoTools(token, catalog, {
+          ...toolsOpts,
           includeCatalogTool: true,
-          truncateOptions,
         });
       } else {
         catalogInPrompt = true;
@@ -185,8 +189,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
           promptMode: mode,
         });
         tools = buildPulsoTools(token, catalog, {
+          ...toolsOpts,
           includeCatalogTool: false,
-          truncateOptions,
         });
       }
 
@@ -209,8 +213,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
       promptMode: chosenMode,
     });
     tools = buildPulsoTools(token, catalog, {
+      ...toolsOpts,
       includeCatalogTool: chosenMode === "tool-only",
-      truncateOptions,
     });
     estimatedTokens =
       estimateTokens(system) + fixedOverhead + estimateJsonTokens(tools);
