@@ -168,7 +168,7 @@ export function buildEjecutarConsultaPulsoTool(
     description: [
       "Consulta datos del ERP (ventas, clientes, stock, finanzas, catálogos maestros).",
       "Elegí el sp_ISG_Vision_* del catálogo interno; nunca preguntes al usuario qué consulta usar.",
-      "Listados maestros (ej. sp_ISG_Vision_GetMarcas): ejecutá con parametros omitidos o []. No digas que no tenés acceso.",
+      "Listados maestros (Catalogo_* o Get* del catálogo con TIPO CATALOGO): ejecutá con parametros omitidos o []. No inventes nombres de SP. No digas que no tenés acceso.",
       "Usá solo parámetros de entrada del catálogo. Si el usuario dio fechas o período (ej. «junio»), calculá FechaDesde/FechaHasta con el año actual si falta y ejecutá ANTES de responder.",
       "Nunca respondas «no hay ventas», «no encontré datos» o «no se pudo acceder» sin haber ejecutado esta tool. Si no hay match exacto, ofrecé 1–2 alternativas de negocio cercanas y pedí confirmar; no inventes fallos de acceso.",
       "Si faltan inputs requeridos del catálogo que el usuario no dio, no inventes valores: el runtime devolverá MISSING_REQUIRED_PARAMS y debés pedir el dato de negocio.",
@@ -198,6 +198,55 @@ export function buildEjecutarConsultaPulsoTool(
       const catalogSp = catalog.find(
         (sp) => getSpNombre(sp).toLowerCase() === nombreSp.toLowerCase(),
       );
+
+      if (!nombreSp.startsWith("sp_ISG_Vision_")) {
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "UNAUTHORIZED_SP",
+          paramsKeys,
+        });
+        return {
+          ok: false,
+          code: "UNAUTHORIZED_SP",
+          nombreSp,
+          message: "Consulta no autorizada.",
+          avisoUsuario:
+            "Decile al usuario que esa consulta no está disponible y ofrecé otra forma de ayudar.",
+        };
+      }
+
+      // Solo ejecutar SPs presentes en el catálogo cacheado (evita 500 SQL por GetRubros fantasma).
+      if (catalog.length > 0 && !catalogSp) {
+        const alternatives = selectRelevantSps(nombreSp, catalog, 3)
+          .map((sp) => getSpNombre(sp))
+          .filter(Boolean)
+          .slice(0, 3);
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "UNKNOWN_SP",
+          paramsKeys,
+        });
+        return {
+          ok: false,
+          code: "UNKNOWN_SP",
+          nombreSp,
+          message:
+            "Esa consulta no está en el catálogo. No reintentés el mismo nombre.",
+          alternativasCatalogo: alternatives.length ? alternatives : undefined,
+          avisoUsuario: [
+            "NO digas error de SQL ni que el procedimiento no existe.",
+            "Esa consulta no está disponible en esta instancia.",
+            alternatives.length
+              ? "Elegí otra candidata del catálogo interno (o de alternativasCatalogo) que coincida con la intención, o pedí un dato de negocio (rubro, sucursal, fechas)."
+              : "Ofrecé 1–2 alternativas de negocio cercanas del catálogo rankeado o pedí aclarar el pedido.",
+            "NUNCA inventes un nombre de SP (GetRubros, GetMarcas, etc.) que no figure en el catálogo.",
+          ].join(" "),
+        };
+      }
 
       if (missingRequired.length > 0) {
         logPulsoExec({
@@ -248,24 +297,6 @@ export function buildEjecutarConsultaPulsoTool(
           parametrosEnviados: raw,
           avisoUsuario:
             "Decile al usuario, en lenguaje simple, que no pudiste completar la búsqueda y pedile reformular (sin mencionar SP ni parámetros).",
-        };
-      }
-
-      if (!nombreSp.startsWith("sp_ISG_Vision_")) {
-        logPulsoExec({
-          nombreSp,
-          ok: false,
-          ms: Date.now() - started,
-          code: "UNAUTHORIZED_SP",
-          paramsKeys,
-        });
-        return {
-          ok: false,
-          code: "UNAUTHORIZED_SP",
-          nombreSp,
-          message: "Consulta no autorizada.",
-          avisoUsuario:
-            "Decile al usuario que esa consulta no está disponible y ofrecé otra forma de ayudar.",
         };
       }
 

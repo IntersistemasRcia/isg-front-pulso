@@ -74,8 +74,8 @@ export function getSpParametros(sp: SpArquitectura): SpParametroArquitectura[] {
   return (sp.parametros ?? sp.parameters ?? []).filter((p) => !p.esOutput);
 }
 
-/** Tope de descripción Pulso en prompt (alineado al parser API, max 1000). */
-export const PULSO_DESC_PROMPT_MAX = 1000;
+/** Tope de descripción Pulso en prompt (alineado al parser API, max 3000). */
+export const PULSO_DESC_PROMPT_MAX = 3000;
 
 function clipPulsoDesc(desc: string, max: number): string {
   const t = desc.trim();
