@@ -41,7 +41,8 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
     nameTokens: /\brubros?\b/i,
     paramKeys: /^(id)?rubro$/i,
     idColumns: /^id[\s_]?rubro$/i,
-    labelColumns: /^rubro$/i,
+    /** Informes: Rubro; Catalogo_*: Descripcion. */
+    labelColumns: /^(rubro|descripcion)$/i,
     spNameTokens: /rubro/i,
   },
   {
@@ -49,7 +50,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
     nameTokens: /\bmarcas?\b/i,
     paramKeys: /^(id)?marca$/i,
     idColumns: /^id[\s_]?marca$/i,
-    labelColumns: /^marca$/i,
+    labelColumns: /^(marca|descripcion)$/i,
     spNameTokens: /marca/i,
   },
   {
@@ -57,7 +58,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
     nameTokens: /\bsectores?\b|\bsector\b/i,
     paramKeys: /^(id)?sector$/i,
     idColumns: /^id[\s_]?sector$/i,
-    labelColumns: /^sector$/i,
+    labelColumns: /^(sector|descripcion)$/i,
     spNameTokens: /sector/i,
   },
   {
@@ -65,7 +66,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
     nameTokens: /\bsucursales?\b|\bsucursal\b/i,
     paramKeys: /^(id)?sucursal$/i,
     idColumns: /^id[\s_]?sucursal$/i,
-    labelColumns: /^sucursal$/i,
+    labelColumns: /^(sucursal|descripcion)$/i,
     spNameTokens: /sucursal/i,
   },
   {
@@ -73,7 +74,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
     nameTokens: /\bzonas?\b/i,
     paramKeys: /^(id)?zona$/i,
     idColumns: /^id[\s_]?zona$/i,
-    labelColumns: /^zona$/i,
+    labelColumns: /^(zona|descripcion)$/i,
     spNameTokens: /zona/i,
   },
   {
@@ -81,7 +82,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
     nameTokens: /\bvendedores?\b|\bvendedor\b/i,
     paramKeys: /^(id)?vendedor$/i,
     idColumns: /^id[\s_]?vendedor$/i,
-    labelColumns: /^vendedor$/i,
+    labelColumns: /^(vendedor|descripcion)$/i,
     spNameTokens: /vendedor/i,
   },
 ] as const;
@@ -261,7 +262,7 @@ function rowValues(
 }
 
 export type MasterMismatch = {
-  code: "MASTER_MISMATCH_HINT";
+  code: "MASTER_MISMATCH";
   dimension: string;
   expectedCode?: string;
   expectedName?: string;
@@ -272,16 +273,24 @@ export type MasterMismatch = {
 
 /**
  * Contrasta el pedido del usuario (y params enviados) con columnas de dimensión en preview.
- * Si hay desacuerdo (nombre pedido vs etiqueta de filas, o código pedido vs ID de filas),
- * devuelve hint para el modelo.
+ * Si hay desacuerdo (nombre pedido vs etiqueta de filas, o código pedido vs IDs de filas),
+ * devuelve mismatch duro (ok:false vía appendMasterMismatchHint).
+ * No aplica a listados Catalogo_* / Get* maestros (ahí se usa resolveMasterFromCatalogRows).
  */
 export function detectMasterMismatch(options: {
   userText: string;
   parametros: Record<string, unknown>;
   previewRows: unknown[];
+  nombreSp?: string;
 }): MasterMismatch | null {
-  const { userText, parametros, previewRows } = options;
+  const { userText, parametros, previewRows, nombreSp } = options;
   if (!previewRows.length) return null;
+  if (
+    nombreSp &&
+    (isMasterListSpName(nombreSp) || looksLikeMasterListSp(nombreSp))
+  ) {
+    return null;
+  }
 
   const intents = extractMasterIntents(userText);
   if (!intents.length) return null;
@@ -305,14 +314,14 @@ export function detectMasterMismatch(options: {
           ...new Set(labels.map((l) => String(l).trim()).filter(Boolean)),
         ].slice(0, 3);
         return {
-          code: "MASTER_MISMATCH_HINT",
+          code: "MASTER_MISMATCH",
           dimension: dim.id,
           expectedCode: want,
           sampleIds: distinct.slice(0, 5),
           sampleLabels,
           avisoUsuario: [
-            `MASTER_MISMATCH_HINT: pediste ${dim.id} código ${want}, pero las filas muestran otro/s (${distinct.slice(0, 3).join(", ")}${sampleLabels.length ? ` / ${sampleLabels.join(", ")}` : ""}).`,
-            "NO afirmes el maestro pedido. Resolvé de nuevo con Catalogo_* (o el Get* real del catálogo) y reejecutá el informe con el ID correcto.",
+            `MASTER_MISMATCH: pediste ${dim.id} código ${want}, pero las filas son de otro/s (${distinct.slice(0, 3).join(", ")}${sampleLabels.length ? ` / ${sampleLabels.join(", ")}` : ""}).`,
+            "Este resultado NO es válido. NO lo presentes al usuario. Ejecutá Catalogo_* del maestro, tomá el CÓDIGO correcto y reejecutá el informe. PROHIBIDO reusar un código viejo del hilo. Al usuario decí «código», nunca «ID».",
           ].join(" "),
         };
       }
@@ -335,14 +344,15 @@ export function detectMasterMismatch(options: {
           ...new Set(ids.map((v) => String(v).trim()).filter(Boolean)),
         ].slice(0, 5);
         return {
-          code: "MASTER_MISMATCH_HINT",
+          code: "MASTER_MISMATCH",
           dimension: dim.id,
           expectedName: nameHint,
           sampleIds,
           sampleLabels,
           avisoUsuario: [
-            `MASTER_MISMATCH_HINT: pediste ${dim.id} «${nameHint}», pero las filas muestran «${sampleLabels.join(", ") || "otro valor"}».`,
-            "NO digas que es el maestro pedido. Ejecutá Catalogo_* del catálogo, tomá el ID correcto y reejecutá el informe. No reutilices un ID viejo del hilo.",
+            `MASTER_MISMATCH: pediste ${dim.id} «${nameHint}», pero las filas muestran «${sampleLabels.join(", ") || "otro valor"}».`,
+            "Este resultado NO es válido. NO lo presentes al usuario ni digas que es el maestro pedido.",
+            "Ejecutá YA Catalogo_* del catálogo, buscá el nombre exacto, usá ese CÓDIGO en el informe y reejecutá. PROHIBIDO reusar un código viejo del hilo. PROHIBIDO pedir confirmación si hay match exacto. Al usuario decí «código», nunca «ID».",
           ].join(" "),
         };
       }
@@ -352,17 +362,99 @@ export function detectMasterMismatch(options: {
   return null;
 }
 
-/** Anexa el hint de mismatch al avisoUsuario de un payload ok. */
+export type MaestroResuelto = {
+  dimension: string;
+  nombre: string;
+  codigo: string;
+  exacto: boolean;
+};
+
+/**
+ * Tras Catalogo_* / Get* maestro: si el usuario pidió un nombre, resuelve el código.
+ * Match exacto (normalizado) preferido; si no, includes.
+ */
+export function resolveMasterFromCatalogRows(options: {
+  userText: string;
+  nombreSp: string;
+  rows: unknown[];
+}): MaestroResuelto | null {
+  const { userText, nombreSp, rows } = options;
+  if (!rows.length || !userText.trim()) return null;
+  if (!isMasterListSpName(nombreSp) && !looksLikeMasterListSp(nombreSp)) {
+    return null;
+  }
+
+  const dim =
+    inferMasterDimensionFromSpName(nombreSp) ??
+    extractMasterIntents(userText)[0]?.dimension;
+  if (!dim) return null;
+
+  const intents = extractMasterIntents(userText).filter(
+    (i) => i.dimension.id === dim.id && i.nameHint,
+  );
+  const nameHint =
+    intents[0]?.nameHint ??
+    extractMasterIntents(userText).find((i) => i.nameHint)?.nameHint;
+  if (!nameHint) return null;
+
+  const wantNorm = normalizeLabel(nameHint);
+  if (wantNorm.length < 2) return null;
+
+  type Cand = { codigo: string; nombre: string; exacto: boolean };
+  const cands: Cand[] = [];
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const rec = row as Record<string, unknown>;
+    let idVal: unknown;
+    let labelVal: unknown;
+    for (const [k, v] of Object.entries(rec)) {
+      if (dim.idColumns.test(k.replace(/\s+/g, ""))) idVal = v;
+      if (dim.labelColumns.test(k.replace(/\s+/g, ""))) labelVal = v;
+    }
+    if (idVal == null || labelVal == null) continue;
+    const labNorm = normalizeLabel(labelVal);
+    if (!labNorm) continue;
+    if (labNorm === wantNorm) {
+      cands.push({
+        codigo: String(idVal).trim(),
+        nombre: String(labelVal).trim(),
+        exacto: true,
+      });
+    } else if (labNorm.includes(wantNorm) || wantNorm.includes(labNorm)) {
+      cands.push({
+        codigo: String(idVal).trim(),
+        nombre: String(labelVal).trim(),
+        exacto: false,
+      });
+    }
+  }
+
+  const exact = cands.find((c) => c.exacto);
+  const pick = exact ?? cands[0];
+  if (!pick) return null;
+
+  return {
+    dimension: dim.id,
+    nombre: pick.nombre,
+    codigo: pick.codigo,
+    exacto: pick.exacto,
+  };
+}
+
+/**
+ * Hard gate: mismatch → ok:false (el modelo no puede presentar filas erróneas).
+ * No deja uiTable/rows en el payload de éxito.
+ */
 export function appendMasterMismatchHint(
   payload: Record<string, unknown>,
   mismatch: MasterMismatch | null,
 ): Record<string, unknown> {
   if (!mismatch) return payload;
-  const prev =
-    typeof payload.avisoUsuario === "string" ? payload.avisoUsuario.trim() : "";
   return {
-    ...payload,
-    code: mismatch.code,
+    ok: false,
+    code: "MASTER_MISMATCH",
+    nombreSp: payload.nombreSp,
     masterMismatch: {
       dimension: mismatch.dimension,
       expectedCode: mismatch.expectedCode,
@@ -370,6 +462,78 @@ export function appendMasterMismatchHint(
       sampleIds: mismatch.sampleIds,
       sampleLabels: mismatch.sampleLabels,
     },
-    avisoUsuario: [prev, mismatch.avisoUsuario].filter(Boolean).join(" "),
+    avisoUsuario: mismatch.avisoUsuario,
   };
+}
+
+/** Inyecta maestroResuelto + aviso obligatorio tras Catalogo_* con match. */
+export function appendMaestroResueltoHint(
+  payload: Record<string, unknown>,
+  resolved: MaestroResuelto | null,
+): Record<string, unknown> {
+  if (!resolved || payload.ok !== true) return payload;
+  const prev =
+    typeof payload.avisoUsuario === "string" ? payload.avisoUsuario.trim() : "";
+  const instruccion = resolved.exacto
+    ? [
+        `maestroResuelto: ${resolved.dimension} «${resolved.nombre}» → CÓDIGO ${resolved.codigo} (match exacto).`,
+        `Usá YA el código ${resolved.codigo} en el informe pedido y reejecutá. PROHIBIDO pedir confirmación al usuario. PROHIBIDO reusar otro código del hilo. Al usuario decí «código ${resolved.codigo}» o el nombre «${resolved.nombre}», nunca «ID».`,
+      ].join(" ")
+    : [
+        `maestroResuelto (parcial): ${resolved.dimension} «${resolved.nombre}» → CÓDIGO ${resolved.codigo}.`,
+        `Si el nombre calza con lo pedido, usá el código ${resolved.codigo} y reejecutá el informe. Si hay varias opciones cercanas, ofrecé 1–2 nombres de negocio (sin decir ID). Al usuario decí «código», nunca «ID».`,
+      ].join(" ");
+
+  return {
+    ...payload,
+    code: "MAESTRO_RESUELTO",
+    maestroResuelto: resolved,
+    avisoUsuario: [prev, instruccion].filter(Boolean).join(" "),
+  };
+}
+
+/**
+ * ¿El usuario pidió ver el catálogo/maestro en sí, o un informe de negocio?
+ * Si pide ventas/reposición/etc., Catalogo_* es resolución interna (sin UI).
+ */
+export function userAskedForMasterCatalogList(userText: string): boolean {
+  const t = userText.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+  const wantsReport =
+    /\b(venta|ventas|informe|reposicion|reponer|stock|margen|ranking|cuanto|comprar|kpi|evolucion|factur)\w*/.test(
+      t,
+    );
+  if (wantsReport) return false;
+  return /\b(catalogo|listado|lista|dame|mostrame|mostrar|cuales|que)\b/.test(t) &&
+    /\b(rubro|rubros|marca|marcas|subrubro|sucursal|sucursales|sector|vendedor)\b/.test(
+      t,
+    );
+}
+
+/**
+ * SP Catalogo_ o Get* usado para resolver código: sin tabla ni Excel al usuario.
+ * El modelo sigue viendo filas (via toModelOutput) y maestroResuelto.
+ */
+export function makeMasterLookupSilent(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  if (payload.ok !== true) return payload;
+  const prev =
+    typeof payload.avisoUsuario === "string" ? payload.avisoUsuario.trim() : "";
+  const next: Record<string, unknown> = {
+    ...payload,
+    uiTable: false,
+    uiSilent: true,
+    avisoUsuario: [
+      prev,
+      "Resolución de maestro (uso interno): NO hay tabla ni Excel en pantalla.",
+      "NO presentes este listado al usuario. NO digas que hay un Excel del catálogo.",
+      "Si hay maestroResuelto: ejecutá YA UNA sola vez el informe de negocio con ese código.",
+      "PROHIBIDO volver a llamar este catálogo en el mismo turno. PROHIBIDO apilar varios listados.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  };
+  delete next.delivery;
+  delete next.exportId;
+  return next;
 }

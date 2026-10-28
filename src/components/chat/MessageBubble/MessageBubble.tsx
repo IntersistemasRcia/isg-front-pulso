@@ -36,59 +36,68 @@ function spTitle(nombreSp: unknown): string | undefined {
   return nombreSp.replace(/^sp_ISG_Vision_/i, "").replace(/_/g, " ");
 }
 
-function getExcelExportsFromTools(message: UIMessage): ExcelToolExport[] {
-  const out: ExcelToolExport[] = [];
-  for (const part of message.parts) {
-    if (!isToolUIPart(part)) continue;
-    if (part.state !== "output-available" || part.output == null) continue;
-    if (typeof part.output !== "object") continue;
-    const o = part.output as Record<string, unknown>;
-    if (typeof o.exportId !== "string") continue;
-    // Solo botón Excel cuando la tool marcó delivery=excel y hay más de 50 filas.
-    if (o.delivery !== "excel") continue;
-    const totalRows = typeof o.totalRows === "number" ? o.totalRows : undefined;
-    if (totalRows != null && totalRows <= 50) continue;
-    out.push({
-      exportId: o.exportId,
-      totalRows,
-      title: spTitle(o.nombreSp),
-    });
-  }
-  return out;
-}
-
-function getTablePreviewsFromTools(message: UIMessage): TableToolPreview[] {
-  const out: TableToolPreview[] = [];
-  let idx = 0;
+/**
+ * Solo el ÚLTIMO listado visible (uiTable) del turno.
+ * Evita apilar Catalogo_* + reintentos + informes fallidos como N cards.
+ */
+function getLastVisibleToolOutput(
+  message: UIMessage,
+): Record<string, unknown> | null {
+  let last: Record<string, unknown> | null = null;
   for (const part of message.parts) {
     if (!isToolUIPart(part)) continue;
     if (part.state !== "output-available" || part.output == null) continue;
     if (typeof part.output !== "object") continue;
     const o = part.output as Record<string, unknown>;
     if (o.ok === false) continue;
+    if (o.uiSilent === true) continue;
+    if (o.uiTable !== true) continue;
+    last = o;
+  }
+  return last;
+}
 
-    const rawRows = Array.isArray(o.rows)
-      ? o.rows
-      : Array.isArray(o.previewRows)
-        ? o.previewRows
-        : null;
-    if (!rawRows?.length) continue;
+function getExcelExportsFromTools(message: UIMessage): ExcelToolExport[] {
+  const o = getLastVisibleToolOutput(message);
+  if (!o) return [];
+  if (typeof o.exportId !== "string") return [];
+  if (o.delivery !== "excel") return [];
+  const totalRows = typeof o.totalRows === "number" ? o.totalRows : undefined;
+  if (totalRows != null && totalRows <= 50) return [];
+  return [
+    {
+      exportId: o.exportId,
+      totalRows,
+      title: spTitle(o.nombreSp),
+    },
+  ];
+}
 
-    const rows = asObjectRows(rawRows);
-    if (!rows.length) continue;
+function getTablePreviewsFromTools(message: UIMessage): TableToolPreview[] {
+  const o = getLastVisibleToolOutput(message);
+  if (!o) return [];
 
-    const totalExact = o.totalExact !== false;
-    out.push({
-      key: `tbl-${idx}-${typeof o.exportId === "string" ? o.exportId : idx}`,
+  const rawRows = Array.isArray(o.rows)
+    ? o.rows
+    : Array.isArray(o.previewRows)
+      ? o.previewRows
+      : null;
+  if (!rawRows?.length) return [];
+
+  const rows = asObjectRows(rawRows);
+  if (!rows.length) return [];
+
+  const totalExact = o.totalExact !== false;
+  return [
+    {
+      key: `tbl-last-${typeof o.exportId === "string" ? o.exportId : "0"}`,
       rows,
       totalRows:
         totalExact && typeof o.totalRows === "number" ? o.totalRows : undefined,
       totalExact,
       caption: spTitle(o.nombreSp),
-    });
-    idx += 1;
-  }
-  return out;
+    },
+  ];
 }
 
 function getToolStatus(message: UIMessage): {
