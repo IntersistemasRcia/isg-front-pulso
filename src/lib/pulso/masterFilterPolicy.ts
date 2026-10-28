@@ -31,7 +31,8 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "subrubro",
     nameTokens: /\bsub[\s_-]?rubros?\b/i,
-    paramKeys: /^(id)?sub[\s_]?rubro$/i,
+    /** Incluye SubrubroDesde/Hasta de ranking. */
+    paramKeys: /^(id)?sub[\s_]?rubro(desde|hasta)?$/i,
     idColumns: /^id[\s_]?sub[\s_]?rubro$/i,
     labelColumns: /^sub[\s_]?rubro$/i,
     spNameTokens: /subrubro/i,
@@ -39,7 +40,8 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "rubro",
     nameTokens: /\brubros?\b/i,
-    paramKeys: /^(id|codigo)?rubro$/i,
+    /** Incluye RubroDesde/Hasta de ranking. */
+    paramKeys: /^(id|codigo)?rubro(desde|hasta)?$/i,
     idColumns: /^id[\s_]?rubro$/i,
     /** Informes: Rubro; Catalogo_*: Descripcion. */
     labelColumns: /^(rubro|descripcion)$/i,
@@ -48,7 +50,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "marca",
     nameTokens: /\bmarcas?\b/i,
-    paramKeys: /^(id)?marca$/i,
+    paramKeys: /^(id)?marca(desde|hasta)?$/i,
     idColumns: /^id[\s_]?marca$/i,
     labelColumns: /^(marca|descripcion)$/i,
     spNameTokens: /marca/i,
@@ -56,7 +58,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "sector",
     nameTokens: /\bsectores?\b|\bsector\b/i,
-    paramKeys: /^(id)?sector$/i,
+    paramKeys: /^(id)?sector(desde|hasta)?$/i,
     idColumns: /^id[\s_]?sector$/i,
     labelColumns: /^(sector|descripcion)$/i,
     spNameTokens: /sector/i,
@@ -64,7 +66,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "sucursal",
     nameTokens: /\bsucursales?\b|\bsucursal\b/i,
-    paramKeys: /^(id|codigo)?sucursal$/i,
+    paramKeys: /^(id|codigo)?sucursal(desde|hasta)?$/i,
     idColumns: /^id[\s_]?sucursal$/i,
     labelColumns: /^(sucursal|descripcion)$/i,
     spNameTokens: /sucursal/i,
@@ -72,7 +74,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "zona",
     nameTokens: /\bzonas?\b/i,
-    paramKeys: /^(id)?zona$/i,
+    paramKeys: /^(id)?zona(desde|hasta)?$/i,
     idColumns: /^id[\s_]?zona$/i,
     labelColumns: /^(zona|descripcion)$/i,
     spNameTokens: /zona/i,
@@ -80,7 +82,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "vendedor",
     nameTokens: /\bvendedores?\b|\bvendedor\b/i,
-    paramKeys: /^(id)?vendedor$/i,
+    paramKeys: /^(id)?vendedor(desde|hasta)?$/i,
     idColumns: /^id[\s_]?vendedor$/i,
     labelColumns: /^(vendedor|descripcion)$/i,
     spNameTokens: /vendedor/i,
@@ -176,66 +178,121 @@ export type MasterIntent = {
   nameHint?: string;
 };
 
+const NAME_WORD = `[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9./\\-]*`;
+
+const NAME_STOP =
+  "en|del|de|para|por|con|y|o|el|la|los|las|un|una";
+
+/** Limpia capturas basura tipo «quesos es 2101 no» / «Fiambres del». */
+function cleanNameHint(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  let s = raw.trim();
+  // Cortar ante «es 2101», «es» suelto, «no el …», códigos
+  s = s.split(/\s+es\b/i)[0] ?? s;
+  s = s.split(/\s+no\s+el\b/i)[0] ?? s;
+  s = s.split(/\s+(?:codigo|código)\b/i)[0] ?? s;
+  s = s.replace(/\s+\d{2,}.*$/u, "").trim();
+  s =
+    s
+      .split(new RegExp(`\\s+(?:${NAME_STOP})\\s+`, "i"))[0]
+      ?.trim() ?? s;
+  // «Fiambres del» (stop al final, sin token siguiente)
+  s = s.replace(new RegExp(`\\s+(?:${NAME_STOP})$`, "i"), "").trim();
+  if (!s || /^\d+$/.test(s) || s.length < 2) return undefined;
+  return s;
+}
+
+type IntentHit = MasterIntent & { index: number };
+
 /**
  * Extrae intenciones de maestro del texto del usuario (turno / contexto).
  * Código explícito: «rubro 2103», «IDRubro 2101», «código de sucursal 1».
  * Nombre: «rubro Fiambres», «de la sucursal Resistencia».
+ * Si hay varios en el mismo texto, gana el último por dimensión.
  */
 export function extractMasterIntents(userText: string): MasterIntent[] {
   const text = userText.trim();
   if (!text) return [];
 
-  const intents: MasterIntent[] = [];
+  const hits: IntentHit[] = [];
 
   for (const dim of MASTER_DIMENSIONS) {
-    // «rubro 2103» / «IDRubro: 2101» / «código de rubro 2103»
-    const codeMatch =
-      text.match(
-        new RegExp(
-          `(?:id\\s*)?(?:${dim.id}|${dim.id}s)\\s*[:=]?\\s*(\\d+)`,
-          "i",
-        ),
-      ) ||
-      text.match(
-        new RegExp(
-          `(?:codigo|código)\\s*(?:de\\s*)?(?:${dim.id}|${dim.id}s)\\s*[:=]?\\s*(\\d+)`,
-          "i",
-        ),
-      ) ||
-      text.match(
-        new RegExp(`\\b(?:${dim.id}|${dim.id}s)\\s+(\\d+)\\b`, "i"),
-      );
+    const idAlt = `${dim.id}|${dim.id}s`;
 
-    if (codeMatch?.[1]) {
-      intents.push({ dimension: dim, code: codeMatch[1] });
-      continue;
+    // Códigos: varias formas; matchAll para quedarnos con el último
+    const codePatterns = [
+      // «código de rubro quesos es 2101» / «codigo de rubro 2103»
+      new RegExp(
+        `(?:codigo|código)\\s+(?:de\\s+)?(?:${idAlt})\\b[^0-9]{0,48}?(\\d{1,12})`,
+        "gi",
+      ),
+      // «rubro codigo 2103» / «rubro código: 2101»
+      new RegExp(
+        `\\b(?:${idAlt})\\s+(?:codigo|código)\\s*[:=]?\\s*(\\d{1,12})`,
+        "gi",
+      ),
+      // «IDRubro 2101» / «rubro: 2103» / «rubro 2103»
+      new RegExp(
+        `(?:id\\s*)?(?:${idAlt})\\s*[:=]\\s*(\\d{1,12})`,
+        "gi",
+      ),
+      new RegExp(`\\b(?:${idAlt})\\s+(\\d{1,12})\\b`, "gi"),
+    ];
+
+    for (const re of codePatterns) {
+      for (const m of text.matchAll(re)) {
+        if (!m[1] || m.index == null) continue;
+        hits.push({ dimension: dim, code: m[1], index: m.index });
+      }
     }
 
     if (!dim.nameTokens.test(text)) continue;
 
-    // «del rubro Fiambres» / «rubro Fiambres» / «artículos que sean del rubro Fiambres»
-    const nameMatch = text.match(
+    // Nombres: «rubro: quesos», «del rubro Fiambres», «rubro QUESOS»
+    const namePatterns = [
       new RegExp(
-        `(?:del?\\s+)?(?:${dim.id}|${dim.id}s)\\s+(?:de\\s+|del\\s+)?["“]?([A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9][A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9\\s.\\-]{1,40})`,
-        "i",
+        `\\b(?:${idAlt})\\s*[:=]\\s*["“']?(${NAME_WORD}(?:\\s+${NAME_WORD}){0,4})`,
+        "gi",
       ),
-    );
-    let nameHint = nameMatch?.[1]?.trim();
-    if (nameHint) {
-      // Cortar en preposiciones de cola típicas
-      nameHint = nameHint
-        .split(/\s+(?:en|del|de|para|por|con|y|o|el|la|los|las|un|una)\s+/i)[0]
-        ?.trim();
+      new RegExp(
+        `(?:del?\\s+)?(?:${idAlt})\\s+(?:de\\s+|del\\s+)?["“']?(${NAME_WORD}(?:\\s+${NAME_WORD}){0,4})`,
+        "gi",
+      ),
+    ];
+
+    for (const re of namePatterns) {
+      for (const m of text.matchAll(re)) {
+        if (m.index == null) continue;
+        const nameHint = cleanNameHint(m[1]);
+        if (!nameHint) continue;
+        // Evitar capturar «codigo» / «código» como nombre
+        if (/^(codigo|código|id)$/i.test(nameHint)) continue;
+        hits.push({ dimension: dim, nameHint, index: m.index });
+      }
     }
-    if (nameHint && !/^\d+$/.test(nameHint) && nameHint.length >= 2) {
-      intents.push({ dimension: dim, nameHint });
-    } else if (dim.nameTokens.test(text)) {
-      // Mención de la dimensión sin valor claro (ej. «buscá el rubro por nombre»)
-      intents.push({ dimension: dim });
+
+    // Mención de dimensión sin valor (solo si no hubo hits de esta dim)
+    if (!hits.some((h) => h.dimension.id === dim.id)) {
+      const bare = text.match(dim.nameTokens);
+      if (bare?.index != null) {
+        hits.push({ dimension: dim, index: bare.index });
+      }
     }
   }
 
-  return intents;
+  // Orden de aparición; último por dimensión gana (merge code + nameHint)
+  hits.sort((a, b) => a.index - b.index);
+  const byDim = new Map<string, MasterIntent>();
+  for (const hit of hits) {
+    const prev = byDim.get(hit.dimension.id);
+    byDim.set(hit.dimension.id, {
+      dimension: hit.dimension,
+      code: hit.code ?? prev?.code,
+      nameHint: hit.nameHint ?? prev?.nameHint,
+    });
+  }
+
+  return [...byDim.values()];
 }
 
 function findColumnKey(
@@ -329,6 +386,23 @@ export function detectMasterMismatch(options: {
 
     // Nombre pedido vs etiquetas de filas (ej. Fiambres vs QUESOS)
     if (nameHint && labels.length) {
+      // Si el código enviado en params calza con los IDs de fila, el filtro es
+      // coherente aunque un nameHint viejo del contexto no coincida.
+      const paramCodeEntry = Object.entries(parametros).find(([k]) =>
+        dim.paramKeys.test(k.replace(/\s+/g, "")),
+      );
+      if (
+        paramCodeEntry &&
+        isNumericCode(paramCodeEntry[1]) &&
+        ids.length
+      ) {
+        const wantParam = String(paramCodeEntry[1]).trim();
+        const idSet = new Set(ids.map((v) => String(v).trim()).filter(Boolean));
+        if (idSet.has(wantParam)) {
+          continue;
+        }
+      }
+
       const wantNorm = normalizeLabel(nameHint);
       if (wantNorm.length < 2) continue;
       const labelNorms = labels.map(normalizeLabel).filter(Boolean);
@@ -547,13 +621,17 @@ export type OmittedMasterFilter = {
 function paramKeyMatchesDimension(key: string, dim: MasterDimension): boolean {
   const stripped = key.replace(/^@/, "").trim();
   if (dim.paramKeys.test(stripped)) return true;
-  // CodigoRubro / ID_Rubro → normalizar letras
+  // CodigoRubro / ID_Rubro / RubroDesde → normalizar letras
   const compact = stripped.toLowerCase().replace(/[^a-z0-9]/g, "");
   const id = dim.id.toLowerCase();
   return (
     compact === id ||
     compact === `id${id}` ||
-    compact === `codigo${id}`
+    compact === `codigo${id}` ||
+    compact === `${id}desde` ||
+    compact === `${id}hasta` ||
+    compact === `id${id}desde` ||
+    compact === `id${id}hasta`
   );
 }
 

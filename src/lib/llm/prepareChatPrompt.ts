@@ -9,6 +9,7 @@ import {
 } from "@/lib/llm/tokenBudget";
 import {
   buildFollowUpContextHint,
+  buildLastUserQueryText,
   buildUserQueryContext,
 } from "@/lib/chat/buildUserQueryContext";
 import { buildPulsoSystemPrompt } from "@/lib/pulso/systemPrompt";
@@ -128,6 +129,7 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
   } = options;
 
   const userQueryContext = buildUserQueryContext(messages);
+  const lastUserQueryText = buildLastUserQueryText(messages);
   const followUpContext = buildFollowUpContextHint(messages);
   const spTopK = definition?.relevantSpTopK;
   const relevantCatalog = selectRelevantSps(userQueryContext, catalog, spTopK);
@@ -163,6 +165,7 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
   const toolsOpts = {
     truncateOptions,
     userQueryContext,
+    lastUserQueryText,
   };
   let tools = buildPulsoTools(token, catalog, toolsOpts);
   let estimatedTokens = 0;

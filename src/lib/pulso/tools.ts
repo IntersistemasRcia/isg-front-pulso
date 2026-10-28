@@ -170,22 +170,29 @@ function spUiTitle(
  * Hard gate MASTER_MISMATCH (ok:false) si filas ≠ maestro pedido.
  * Tras Catalogo_: inyecta maestroResuelto (codigo) si hay match por nombre.
  * Catalogo_ / Get* de resolucion → sin UI (salvo pedido explicito del catalogo).
+ * mismatch/resolve usan lastUserQueryText (turno actual); silencio de UI puede
+ * mirar el contexto más amplio para «dame el listado de rubros».
  */
 function annotateMasterMismatch(
   payload: Record<string, unknown>,
   userQueryContext: string | undefined,
   parametros: Record<string, unknown>,
+  lastUserQueryText?: string,
 ): Record<string, unknown> {
   const nombreSp =
     typeof payload.nombreSp === "string" ? payload.nombreSp : "";
   const isMasterSp = Boolean(nombreSp) && looksLikeMasterListSp(nombreSp);
+  const masterText =
+    lastUserQueryText?.trim() || userQueryContext?.trim() || "";
+  const catalogAskText =
+    userQueryContext?.trim() || lastUserQueryText?.trim() || "";
 
   let next = payload;
-  if (userQueryContext?.trim() && payload.ok === true) {
+  if (masterText && payload.ok === true) {
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
     if (rows.length) {
       const mismatch = detectMasterMismatch({
-        userText: userQueryContext,
+        userText: masterText,
         parametros,
         previewRows: rows,
         nombreSp: nombreSp || undefined,
@@ -195,7 +202,7 @@ function annotateMasterMismatch(
       }
 
       const resolved = resolveMasterFromCatalogRows({
-        userText: userQueryContext,
+        userText: masterText,
         nombreSp,
         rows,
       });
@@ -207,7 +214,7 @@ function annotateMasterMismatch(
   if (
     next.ok === true &&
     isMasterSp &&
-    !(userQueryContext?.trim() && userAskedForMasterCatalogList(userQueryContext))
+    !(catalogAskText && userAskedForMasterCatalogList(catalogAskText))
   ) {
     return makeMasterLookupSilent(next);
   }
@@ -223,6 +230,7 @@ export function buildEjecutarConsultaPulsoTool(
   catalog: SpArquitectura[],
   truncateOptions?: TruncateToolResultOptions,
   userQueryContext?: string,
+  lastUserQueryText?: string,
 ) {
   return tool({
     description: [
@@ -523,6 +531,7 @@ export function buildEjecutarConsultaPulsoTool(
             buildCompleteListadoPayload({ ...baseUi, allRows: rows }),
             userQueryContext,
             parametrosRecord,
+            lastUserQueryText,
           );
         }
 
@@ -546,6 +555,7 @@ export function buildEjecutarConsultaPulsoTool(
             }),
             userQueryContext,
             parametrosRecord,
+            lastUserQueryText,
           );
         }
 
@@ -568,6 +578,7 @@ export function buildEjecutarConsultaPulsoTool(
             }),
             userQueryContext,
             parametrosRecord,
+            lastUserQueryText,
           );
         }
 
@@ -585,6 +596,7 @@ export function buildEjecutarConsultaPulsoTool(
             buildSmallListadoPayload({ ...baseUi, rows }),
             userQueryContext,
             parametrosRecord,
+            lastUserQueryText,
           );
         }
 
@@ -617,6 +629,7 @@ export function buildEjecutarConsultaPulsoTool(
           },
           userQueryContext,
           parametrosRecord,
+          lastUserQueryText,
         );
       } catch (error) {
         const message =
@@ -699,8 +712,10 @@ export function buildPulsoTools(
   options?: {
     includeCatalogTool?: boolean;
     truncateOptions?: TruncateToolResultOptions;
-    /** Pedido reciente del usuario (para MASTER_MISMATCH / maestroResuelto). */
+    /** Pedido reciente del usuario (ranking SP / follow-ups / silent catalog). */
     userQueryContext?: string;
+    /** Último mensaje user: MASTER_MISMATCH y maestroResuelto (turno actual). */
+    lastUserQueryText?: string;
   },
 ) {
   const tools = {
@@ -709,6 +724,7 @@ export function buildPulsoTools(
       catalog,
       options?.truncateOptions,
       options?.userQueryContext,
+      options?.lastUserQueryText,
     ),
     ...(options?.includeCatalogTool && catalog.length > 0
       ? { listarCatalogoPulso: buildListarCatalogoPulsoTool(catalog) }

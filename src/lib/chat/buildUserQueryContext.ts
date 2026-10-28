@@ -31,6 +31,20 @@ export function buildUserQueryContext(messages: UIMessage[]): string {
   return snippets.join(" ").trim();
 }
 
+/**
+ * Solo el último mensaje user (texto). Para MASTER_MISMATCH / maestroResuelto:
+ * el turno actual manda; no arrastrar maestros viejos del hilo.
+ */
+export function buildLastUserQueryText(messages: UIMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (msg.role !== "user") continue;
+    const text = extractUserText(msg);
+    if (text) return text;
+  }
+  return "";
+}
+
 /** Bloque de contexto para follow-ups cortos (< 40 chars). */
 export function buildFollowUpContextHint(messages: UIMessage[]): string | undefined {
   if (messages.length <= 1) return undefined;
