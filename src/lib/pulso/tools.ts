@@ -32,6 +32,7 @@ import {
   appendMaestroResueltoHint,
   appendMasterMismatchHint,
   detectMasterMismatch,
+  detectOmittedMasterFilters,
   looksLikeMasterListSp,
   makeMasterLookupSilent,
   pickMasterCatalogAlternatives,
@@ -395,6 +396,46 @@ export function buildEjecutarConsultaPulsoTool(
           parametrosEnviados: raw,
           avisoUsuario:
             "Decile al usuario, en lenguaje simple, que no pudiste completar la búsqueda y pedile reformular (sin mencionar SP ni parámetros).",
+        };
+      }
+
+      // Filtro maestro enviado pero omitido por coerce → no ejecutar sin filtrar
+      const omittedFilters = detectOmittedMasterFilters({
+        userText: userQueryContext,
+        rawParams: raw,
+        coercedParams: parametrosRecord,
+      });
+      if (omittedFilters.length > 0) {
+        const dims = omittedFilters.map((o) => o.dimension).join(", ");
+        const attempted = omittedFilters
+          .map((o) => `${o.attemptedKey}=${String(o.attemptedValue)}`)
+          .join(", ");
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "FILTER_PARAM_OMITTED",
+          paramsKeys,
+        });
+        return {
+          ok: false,
+          code: "FILTER_PARAM_OMITTED",
+          nombreSp,
+          omittedFilters,
+          warnings: warnings.length ? warnings : undefined,
+          parametrosEsperados: catalogSp
+            ? formatSpParamHint(catalogSp)
+            : undefined,
+          parametrosEnviados: raw,
+          parametrosEfectivos: parametrosRecord,
+          avisoUsuario: [
+            `FILTER_PARAM_OMITTED: el filtro de ${dims} (${attempted}) NO entró en la consulta (nombre de parámetro inválido para este SP o no existe en la firma).`,
+            "NO presentes ningún listado ni digas que ya filtraste por ese maestro.",
+            catalogSp
+              ? `Firma de este SP: ${formatSpParamHint(catalogSp)}. Reejecutá con el nombre EXACTO del parámetro de filtro, o elegí otro SP del catálogo que sí filtre por ${dims} (p. ej. reposicion_por_articulo con IDRubro/IDSucursal).`
+              : `Elegí un SP del catálogo cuya firma tenga el filtro de ${dims}.`,
+            "Al usuario: no digas que el informe ya está filtrado; corregí y reejecutá.",
+          ].join(" "),
         };
       }
 

@@ -48,6 +48,16 @@ function buildModelSummary(output: unknown): Record<string, unknown> {
       code: typeof o.code === "string" ? o.code : undefined,
       missingRequired: o.missingRequired,
       ...(o.masterMismatch != null ? { masterMismatch: o.masterMismatch } : {}),
+      ...(o.omittedFilters != null ? { omittedFilters: o.omittedFilters } : {}),
+      ...(Array.isArray(o.warnings) && o.warnings.length
+        ? { warnings: o.warnings }
+        : {}),
+      ...(o.parametrosEsperados != null
+        ? { parametrosEsperados: o.parametrosEsperados }
+        : {}),
+      ...(o.parametrosEfectivos != null
+        ? { parametrosEfectivos: o.parametrosEfectivos }
+        : {}),
       instruccion:
         aviso ??
         "Explicá el problema en una frase simple de negocio y pedí lo que falte o reintentar.",
@@ -89,6 +99,11 @@ function buildModelSummary(output: unknown): Record<string, unknown> {
     };
   }
 
+  const warnings =
+    Array.isArray(o.warnings) && o.warnings.length
+      ? (o.warnings as unknown[])
+      : undefined;
+
   return {
     ok: true,
     ...(typeof o.code === "string" ? { code: o.code } : {}),
@@ -99,11 +114,15 @@ function buildModelSummary(output: unknown): Record<string, unknown> {
     totalExact,
     ...(totalRows != null ? { totalRegistros: totalRows } : {}),
     ...(mostrando != null ? { mostrandoEnPantalla: mostrando } : {}),
+    ...(warnings ? { warnings } : {}),
     instruccion:
       aviso ??
       (hayExcel
         ? "Hay más de 50 registros: en pantalla ves un adelanto y hay botón para bajar el Excel completo. Decí totalRegistros si viene. No listes filas."
-        : "En pantalla está la tabla. Resumí en 1–3 frases de negocio. No digas UI/HTML/tool. No ofrezcas Excel si hayExcel=false."),
+        : "En pantalla está la tabla. Resumí en 1–3 frases de negocio. No digas UI/HTML/tool. No ofrezcas Excel si hayExcel=false.") +
+        (warnings
+          ? " Si hay warnings de parámetros omitidos, NO digas que filtraste por ese criterio."
+          : ""),
   };
 }
 
