@@ -39,7 +39,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "rubro",
     nameTokens: /\brubros?\b/i,
-    paramKeys: /^(id)?rubro$/i,
+    paramKeys: /^(id|codigo)?rubro$/i,
     idColumns: /^id[\s_]?rubro$/i,
     /** Informes: Rubro; Catalogo_*: Descripcion. */
     labelColumns: /^(rubro|descripcion)$/i,
@@ -64,7 +64,7 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
   {
     id: "sucursal",
     nameTokens: /\bsucursales?\b|\bsucursal\b/i,
-    paramKeys: /^(id)?sucursal$/i,
+    paramKeys: /^(id|codigo)?sucursal$/i,
     idColumns: /^id[\s_]?sucursal$/i,
     labelColumns: /^(sucursal|descripcion)$/i,
     spNameTokens: /sucursal/i,
@@ -536,4 +536,65 @@ export function makeMasterLookupSilent(
   delete next.delivery;
   delete next.exportId;
   return next;
+}
+
+export type OmittedMasterFilter = {
+  dimension: string;
+  attemptedKey: string;
+  attemptedValue: unknown;
+};
+
+function paramKeyMatchesDimension(key: string, dim: MasterDimension): boolean {
+  const stripped = key.replace(/^@/, "").trim();
+  if (dim.paramKeys.test(stripped)) return true;
+  // CodigoRubro / ID_Rubro → normalizar letras
+  const compact = stripped.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const id = dim.id.toLowerCase();
+  return (
+    compact === id ||
+    compact === `id${id}` ||
+    compact === `codigo${id}`
+  );
+}
+
+/**
+ * Filtro de maestro pedido (nombre/código) que el LLM envió pero coerce omitió
+ * (nombre no está en la firma del SP). Evita devolver ranking sin filtrar.
+ */
+export function detectOmittedMasterFilters(options: {
+  userText: string | undefined;
+  rawParams: Record<string, unknown>;
+  coercedParams: Record<string, unknown>;
+}): OmittedMasterFilter[] {
+  const { userText, rawParams, coercedParams } = options;
+  if (!userText?.trim()) return [];
+
+  const intents = extractMasterIntents(userText).filter(
+    (i) => Boolean(i.code || i.nameHint),
+  );
+  if (!intents.length) return [];
+
+  const coercedKeys = Object.keys(coercedParams);
+  const out: OmittedMasterFilter[] = [];
+
+  for (const intent of intents) {
+    const dim = intent.dimension;
+    const stillPresent = coercedKeys.some((k) => paramKeyMatchesDimension(k, dim));
+    if (stillPresent) continue;
+
+    for (const [key, value] of Object.entries(rawParams)) {
+      if (value == null || (typeof value === "string" && value.trim() === "")) {
+        continue;
+      }
+      if (!paramKeyMatchesDimension(key, dim)) continue;
+      out.push({
+        dimension: dim.id,
+        attemptedKey: key,
+        attemptedValue: value,
+      });
+      break;
+    }
+  }
+
+  return out;
 }
