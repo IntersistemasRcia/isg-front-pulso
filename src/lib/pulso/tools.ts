@@ -29,10 +29,14 @@ import {
 } from "@/lib/pulso/tablePreview";
 import { toEjecutarConsultaModelOutput } from "@/lib/pulso/toEjecutarConsultaModelOutput";
 import {
+  appendMaestroResueltoHint,
   appendMasterMismatchHint,
   detectMasterMismatch,
   looksLikeMasterListSp,
+  makeMasterLookupSilent,
   pickMasterCatalogAlternatives,
+  resolveMasterFromCatalogRows,
+  userAskedForMasterCatalogList,
 } from "@/lib/pulso/masterFilterPolicy";
 
 const parametroItemSchema = z.object({
@@ -162,22 +166,51 @@ function spUiTitle(
 }
 
 /**
- * Anexa MASTER_MISMATCH_HINT si filas de dimensión no calzan con el pedido del usuario.
+ * Hard gate MASTER_MISMATCH (ok:false) si filas ≠ maestro pedido.
+ * Tras Catalogo_*: inyecta maestroResuelto (código) si hay match por nombre.
+ * Catalogo_*/Get* de resolución → sin UI (salvo pedido explícito del catálogo).
  */
 function annotateMasterMismatch(
   payload: Record<string, unknown>,
   userQueryContext: string | undefined,
   parametros: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (!userQueryContext?.trim() || payload.ok !== true) return payload;
-  const rows = Array.isArray(payload.rows) ? payload.rows : [];
-  if (!rows.length) return payload;
-  const mismatch = detectMasterMismatch({
-    userText: userQueryContext,
-    parametros,
-    previewRows: rows,
-  });
-  return appendMasterMismatchHint(payload, mismatch);
+  const nombreSp =
+    typeof payload.nombreSp === "string" ? payload.nombreSp : "";
+  const isMasterSp = Boolean(nombreSp) && looksLikeMasterListSp(nombreSp);
+
+  let next = payload;
+  if (userQueryContext?.trim() && payload.ok === true) {
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    if (rows.length) {
+      const mismatch = detectMasterMismatch({
+        userText: userQueryContext,
+        parametros,
+        previewRows: rows,
+        nombreSp: nombreSp || undefined,
+      });
+      if (mismatch) {
+        return appendMasterMismatchHint(payload, mismatch);
+      }
+
+      const resolved = resolveMasterFromCatalogRows({
+        userText: userQueryContext,
+        nombreSp,
+        rows,
+      });
+      next = appendMaestroResueltoHint(payload, resolved);
+    }
+  }
+
+  // Resolución intermedia: no Excel/tabla al usuario (evita N cards de Catalogo_*).
+  if (
+    next.ok === true &&
+    isMasterSp &&
+    !(userQueryContext?.trim() && userAskedForMasterCatalogList(userQueryContext))
+  ) {
+    return makeMasterLookupSilent(next);
+  }
+  return next;
 }
 
 /**
@@ -249,7 +282,7 @@ export function buildEjecutarConsultaPulsoTool(
               alternatives.length
                 ? `Ejecutá YA una candidata de alternativasCatalogo (${alternatives.join(", ")}); preferí Catalogo_* / Get* real con TIPO CATALOGO.`
                 : "Buscá en el catálogo un Catalogo_* o Get* real de ese maestro.",
-              "PROHIBIDO reintentar el mismo nombre. NO saltes al informe con un ID viejo del hilo.",
+              "PROHIBIDO reintentar el mismo nombre. NO saltes al informe con un código viejo del hilo.",
             ].join(" "),
           };
         }
@@ -300,7 +333,7 @@ export function buildEjecutarConsultaPulsoTool(
                 alternatives.length
                   ? `Ejecutá YA una candidata de alternativasCatalogo (${alternatives.join(", ")}); preferí Catalogo_* / Get* real con TIPO CATALOGO.`
                   : "Buscá en el catálogo un Catalogo_* o Get* real de ese maestro.",
-                "PROHIBIDO reintentar el mismo nombre. NO saltes al informe con un ID viejo del hilo.",
+                "PROHIBIDO reintentar el mismo nombre. NO saltes al informe con un código viejo del hilo.",
               ].join(" ")
             : [
                 "NO digas error de SQL ni que el procedimiento no existe.",
@@ -625,7 +658,7 @@ export function buildPulsoTools(
   options?: {
     includeCatalogTool?: boolean;
     truncateOptions?: TruncateToolResultOptions;
-    /** Pedido reciente del usuario (para MASTER_MISMATCH_HINT). */
+    /** Pedido reciente del usuario (para MASTER_MISMATCH / maestroResuelto). */
     userQueryContext?: string;
   },
 ) {
