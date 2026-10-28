@@ -9,7 +9,7 @@ import {
   appendMaestroResueltoHint,
   makeMasterLookupSilent,
   userAskedForMasterCatalogList,
-} from "./src/lib/pulso/masterFilterPolicy.ts";
+} from "./src/lib/pulso/masterFilterPolicy";
 
 const userFiambres =
   "informe de ventas del rubro Fiambres del 01/08/2026 al 12/08/2026 sucursal Resistencia";
