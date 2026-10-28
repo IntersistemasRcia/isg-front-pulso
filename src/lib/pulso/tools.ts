@@ -167,8 +167,8 @@ function spUiTitle(
 
 /**
  * Hard gate MASTER_MISMATCH (ok:false) si filas ≠ maestro pedido.
- * Tras Catalogo_*: inyecta maestroResuelto (código) si hay match por nombre.
- * Catalogo_*/Get* de resolución → sin UI (salvo pedido explícito del catálogo).
+ * Tras Catalogo_: inyecta maestroResuelto (codigo) si hay match por nombre.
+ * Catalogo_ / Get* de resolucion → sin UI (salvo pedido explicito del catalogo).
  */
 function annotateMasterMismatch(
   payload: Record<string, unknown>,
