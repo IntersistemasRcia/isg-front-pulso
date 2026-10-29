@@ -1,6 +1,6 @@
 # ISG Pulso — Estándar de metadatos de Stored Procedures
 
-**Versión:** 1.3  
+**Versión:** 1.4  
 **Proyecto:** ISG Pulso  
 **Objetivo:** Normalizar el comentario `Pulso` en cada SP para que el LLM seleccione y ejecute la consulta correcta.
 
@@ -291,3 +291,44 @@ Un modelo, leyendo solo el comentario Pulso + firma de parámetros, debe poder:
 - Catálogo runtime: `GET /SPs_arquitectura` → `descripcion` = texto Pulso.
 - Comportamiento del agente: [`src/lib/pulso/systemPrompt.ts`](../src/lib/pulso/systemPrompt.ts).
 - API / caché: [`docs/PULSO_API.md`](./PULSO_API.md).
+- Coerción por intención (params con default peligroso): [`src/lib/pulso/paramIntentPolicy.ts`](../src/lib/pulso/paramIntentPolicy.ts).
+
+---
+
+## 15. ParamIntentPolicy (defaults peligrosos)
+
+### Problema
+
+Un parámetro **opcional con default SQL** puede cambiar el resultado si el LLM lo omite o manda el default del SP. Ejemplo: `@TipoRanking = 'IMPORTE'`, `@ObjetivoVentaPct = 80` en `sp_ISG_Vision_rankingventas_por_articulo`. El usuario pide «ordenado por cantidad» / listado completo y obtiene otro corte.
+
+**No** partas el SP en uno por cada valor de enum si PROPÓSITO/GRANULARIDAD son los mismos.
+
+### Capas (orden de garantía)
+
+1. **Metadatos Pulso** (este documento): literales, default y efecto en PARÁMETROS / INTERACCIÓN.
+2. **Prompt** (`systemPrompt.ts`): regla corta de interpretación.
+3. **Runtime** (`paramIntentPolicy.ts`): **fuerza** el valor según el texto del usuario antes de `ejecutar-sp`. Esta es la red de seguridad.
+
+### Cómo estandarizar un param nuevo
+
+En [`src/lib/pulso/paramIntentPolicy.ts`](../src/lib/pulso/paramIntentPolicy.ts), agregá una o más `ParamIntentRule` al registro `PARAM_INTENT_RULES`:
+
+```ts
+{
+  id: "mi-sp-modo-x",
+  spName: /mi_sp_nombre/i,
+  paramKey: "MiParametro",
+  whenUser: /frase\s+del\s+usuario/i,
+  priority: 20,
+  resolve: () => "VALOR_CANONICO",
+}
+```
+
+Checklist:
+
+1. El comentario Pulso documenta el default y los literales válidos.
+2. Hay regla(s) en `PARAM_INTENT_RULES` para cada intención de negocio que pelee con el default.
+3. Smoke: texto user → params efectivos esperados tras `applyParamIntentOverrides`.
+4. No hardcodear coerción suelta en `tools.ts` (solo llamar `applyParamIntentOverrides`).
+
+También se cierran rangos `*Desde` / `*Hasta` (Rubro, Subrubro, Marca) cuando solo viene un extremo.

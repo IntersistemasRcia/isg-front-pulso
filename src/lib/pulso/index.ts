@@ -24,6 +24,15 @@ export { selectRelevantSps } from "@/lib/pulso/selectRelevantSps";
 export { formatPulsoDateValue } from "@/lib/pulso/formatParams";
 export { coerceParamsForSp, buildSpCatalogIndex } from "@/lib/pulso/spParamResolver";
 export {
+  applyParamIntentOverrides,
+  closeOpenRangeParams,
+  PARAM_INTENT_RULES,
+} from "@/lib/pulso/paramIntentPolicy";
+export type {
+  ParamIntentRule,
+  ParamIntentApplyResult,
+} from "@/lib/pulso/paramIntentPolicy";
+export {
   syncSpArquitecturaFromApi,
   loadSpArquitecturaFromStorage,
   clearSpArquitecturaStorage,

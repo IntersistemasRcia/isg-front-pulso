@@ -7,6 +7,7 @@ import { formatSpParamHint } from "@/lib/pulso/spParamResolver";
 import type { SpArquitectura } from "@/lib/pulso/types";
 import { truncateToolResult, type TruncateToolResultOptions } from "@/lib/chat/truncateToolResult";
 import { coerceParamsForSp } from "@/lib/pulso/spParamResolver";
+import { applyParamIntentOverrides } from "@/lib/pulso/paramIntentPolicy";
 import {
   RESULT_LARGE_PROBE_LIMIT,
   RESULT_LARGE_THRESHOLD,
@@ -264,11 +265,26 @@ export function buildEjecutarConsultaPulsoTool(
     execute: async ({ nombreSp, parametros, modoResultado }) => {
       const started = Date.now();
       const raw = normalizeToolParametros(parametros);
-      const {
-        parametros: parametrosRecord,
-        warnings,
-        missingRequired,
-      } = coerceParamsForSp(nombreSp, raw, catalog);
+      const coerced = coerceParamsForSp(nombreSp, raw, catalog);
+      const warnings = [...coerced.warnings];
+      const { missingRequired } = coerced;
+
+      // Params con default SQL peligroso (TipoRanking, Objetivo%, …): forzar por intención.
+      const intentUserText =
+        lastUserQueryText?.trim() || userQueryContext?.trim() || "";
+      const intent = applyParamIntentOverrides({
+        nombreSp,
+        userText: intentUserText,
+        params: coerced.parametros,
+      });
+      const parametrosRecord = intent.params;
+      if (intent.applied.length > 0) {
+        warnings.push(
+          ...intent.applied.map(
+            (a) => `intent:${a.id}→${a.paramKey}=${String(a.value)}`,
+          ),
+        );
+      }
 
       const paramsKeys = paramsKeysOf(
         Object.keys(parametrosRecord).length > 0 ? parametrosRecord : raw,
