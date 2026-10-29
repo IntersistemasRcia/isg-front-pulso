@@ -1,104 +1,149 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { Card, TextField } from "@/components/ui";
-import { MyButtons } from "@/utils/MyButtons";
 import { useAuth } from "@/components/providers/AuthProvider";
+import FormularioLogin from "./FormularioLogin";
 import styles from "./login.module.css";
 
-export default function LoginPage() {
-  const router = useRouter();
-  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+const VERSION_APP = "0.1.0";
 
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function IconoBarras() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M5 19V11M10 19V7M15 19V13M20 19V5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconoFoco() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path
+        d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3 11c.5.5 1 1.2 1 2h4c0-.8.5-1.5 1-2a6 6 0 0 0-3-11Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconoReloj() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 8v4.5l3 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export default function LoginPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const hardNavigatingRef = useRef(false);
+  const anioActual = new Date().getFullYear();
 
   useEffect(() => {
+    if (hardNavigatingRef.current) return;
     if (!authLoading && isAuthenticated) {
-      router.replace("/dashboard");
+      window.location.replace("/dashboard");
     }
-  }, [authLoading, isAuthenticated, router]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    try {
-      await login({ username: username.trim(), password });
-      router.replace("/dashboard");
-    } catch (err) {
-      const message =
-        (err as { response?: { data?: { message?: string } }; message?: string })
-          ?.response?.data?.message ||
-        (err as Error)?.message ||
-        "No se pudo iniciar sesión";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  }, [authLoading, isAuthenticated]);
 
   return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <Card className={styles.card}>
-          <div className={styles.brand}>
+    <main className={styles.pagina}>
+      <section className={styles.panel}>
+        <div>
+          <div className={styles.marca}>
             <Image
-              src="/logos/isg.png"
-              alt="isGestion"
-              width={320}
-              height={96}
+              src="/logos/pulso-icon.svg"
+              alt=""
+              width={64}
+              height={64}
               priority
+              unoptimized
               className={styles.logo}
             />
-            <p className={styles.brandSub}>Pulso</p>
+            <span>ISG PULSO</span>
           </div>
 
-          <form className={styles.form} onSubmit={handleSubmit} noValidate>
-            <TextField
-              label="Usuario"
-              name="username"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={loading}
-              required
-            />
-            <TextField
-              label="Contraseña"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-              required
-            />
+          <p className={styles.insignia}>BUSINESS INTELLIGENCE PARA TU NEGOCIO</p>
 
-            {error ? <div className={styles.error}>{error}</div> : null}
-
-            <MyButtons
-              type="submit"
-              color="primary"
-              size="large"
-              fullWidth
-              className={styles.submit}
-              disabled={loading || !username || !password}
-            >
-              {loading ? "Ingresando…" : "Ingresar"}
-            </MyButtons>
-          </form>
-
-          <p className={styles.hint}>
-            Autenticación vía API Auth de la instancia.
+          <h1 className={styles.titulo}>
+            Datos que impulsan <em>mejores decisiones.</em>
+          </h1>
+          <p className={styles.descripcion}>
+            Toda la información de tu negocio, siempre a mano, en cualquier lugar.
           </p>
-        </Card>
-      </div>
-    </div>
+
+          <div className={styles.pilares}>
+            <div className={styles.pilar}>
+              <span className={styles.pilarIcono}>
+                <IconoBarras />
+              </span>
+              <span>
+                <b>Analizá</b>
+                Tu negocio en tiempo real.
+              </span>
+            </div>
+            <div className={styles.pilar}>
+              <span className={styles.pilarIcono}>
+                <IconoFoco />
+              </span>
+              <span>
+                <b>Detectá</b>
+                Oportunidades de crecimiento.
+              </span>
+            </div>
+            <div className={styles.pilar}>
+              <span className={styles.pilarIcono}>
+                <IconoReloj />
+              </span>
+              <span>
+                <b>Decidí</b>
+                Con información confiable.
+              </span>
+            </div>
+          </div>
+
+          <Image
+            src="/login/pulso-bi-hero.svg"
+            alt="Panel con indicadores comerciales de ejemplo"
+            width={900}
+            height={450}
+            priority
+            unoptimized
+            className={styles.hero}
+          />
+        </div>
+
+        <p className={styles.pieProducto}>
+          Un producto de inter<strong>Sistemas</strong>
+        </p>
+      </section>
+
+      <section className={styles.columnaFormulario}>
+        <div className={styles.tarjeta}>
+          <FormularioLogin
+            onNavigate={() => {
+              hardNavigatingRef.current = true;
+            }}
+          />
+
+          <div className={styles.divisor}>
+            <span />
+            <span className={styles.divisorTexto}>o</span>
+            <span />
+          </div>
+
+          <p className={styles.version}>Versión {VERSION_APP}</p>
+          <p className={styles.copyright}>
+            © {anioActual} inter<strong>Sistemas</strong>. Todos los derechos reservados.
+          </p>
+        </div>
+      </section>
+    </main>
   );
 }

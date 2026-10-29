@@ -9,9 +9,11 @@ import {
 } from "@/lib/llm/tokenBudget";
 import {
   buildFollowUpContextHint,
+  buildLastUserQueryText,
   buildUserQueryContext,
 } from "@/lib/chat/buildUserQueryContext";
 import { buildPulsoSystemPrompt } from "@/lib/pulso/systemPrompt";
+import { formatRequiredFiltersHint } from "@/lib/pulso/masterFilterPolicy";
 import { buildPulsoTools } from "@/lib/pulso/tools";
 import {
   formatClosestAlternativesHint,
@@ -128,7 +130,9 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
   } = options;
 
   const userQueryContext = buildUserQueryContext(messages);
+  const lastUserQueryText = buildLastUserQueryText(messages);
   const followUpContext = buildFollowUpContextHint(messages);
+  const requiredFiltersHint = formatRequiredFiltersHint(lastUserQueryText);
   const spTopK = definition?.relevantSpTopK;
   const relevantCatalog = selectRelevantSps(userQueryContext, catalog, spTopK);
   const spCandidates: SpCandidateDebug[] = relevantCatalog.map((sp) => ({
@@ -155,12 +159,18 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
     historySummary,
     followUpContext,
     alternativesHint,
+    requiredFiltersHint,
   };
 
   let chosenMode: PromptCatalogMode = definition?.promptMode ?? "full";
   let catalogInPrompt = true;
   let system = "";
-  let tools = buildPulsoTools(token, catalog, { truncateOptions });
+  const toolsOpts = {
+    truncateOptions,
+    userQueryContext,
+    lastUserQueryText,
+  };
+  let tools = buildPulsoTools(token, catalog, toolsOpts);
   let estimatedTokens = 0;
 
   if (budget != null) {
@@ -174,8 +184,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
           promptMode: mode,
         });
         tools = buildPulsoTools(token, catalog, {
+          ...toolsOpts,
           includeCatalogTool: true,
-          truncateOptions,
         });
       } else {
         catalogInPrompt = true;
@@ -185,8 +195,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
           promptMode: mode,
         });
         tools = buildPulsoTools(token, catalog, {
+          ...toolsOpts,
           includeCatalogTool: false,
-          truncateOptions,
         });
       }
 
@@ -209,8 +219,8 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
       promptMode: chosenMode,
     });
     tools = buildPulsoTools(token, catalog, {
+      ...toolsOpts,
       includeCatalogTool: chosenMode === "tool-only",
-      truncateOptions,
     });
     estimatedTokens =
       estimateTokens(system) + fixedOverhead + estimateJsonTokens(tools);

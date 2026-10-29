@@ -9,13 +9,29 @@ export {
 } from "@/lib/pulso/client";
 export {
   getSpsArquitecturaCached,
+  invalidateSpsArquitecturaCache,
   formatArquitecturaForPrompt,
   formatClosestAlternativesHint,
 } from "@/lib/pulso/catalog";
 export { buildPulsoTools, buildEjecutarConsultaPulsoTool } from "@/lib/pulso/tools";
 export { buildPulsoSystemPrompt } from "@/lib/pulso/systemPrompt";
+export {
+  parsePulsoMetadata,
+  isMasterListSpName,
+  isTipoCatalogo,
+} from "@/lib/pulso/parsePulsoMetadata";
+export { selectRelevantSps } from "@/lib/pulso/selectRelevantSps";
 export { formatPulsoDateValue } from "@/lib/pulso/formatParams";
 export { coerceParamsForSp, buildSpCatalogIndex } from "@/lib/pulso/spParamResolver";
+export {
+  applyParamIntentOverrides,
+  closeOpenRangeParams,
+  PARAM_INTENT_RULES,
+} from "@/lib/pulso/paramIntentPolicy";
+export type {
+  ParamIntentRule,
+  ParamIntentApplyResult,
+} from "@/lib/pulso/paramIntentPolicy";
 export {
   syncSpArquitecturaFromApi,
   loadSpArquitecturaFromStorage,

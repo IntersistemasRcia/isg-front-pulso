@@ -79,10 +79,43 @@ export function mapPayloadToUser(payload: JwtPayload, fallbackUsername?: string)
   };
 }
 
+/**
+ * Normaliza un JWT crudo (Bearer, comillas, cookies que convierten '+' en espacio).
+ */
+export function normalizeAuthToken(raw: string): string {
+  let token = raw.trim().replace(/^["']|["']$/g, "");
+  if (/^bearer\s+/i.test(token)) {
+    token = token.replace(/^bearer\s+/i, "").trim();
+  }
+  // Parsers de cookie a veces transforman '+' (Base64) en espacio → JWT inválido.
+  if (token.includes(" ") && token.split(".").length === 3) {
+    token = token.replace(/ /g, "+");
+  }
+  return token;
+}
+
 /** Extrae Bearer token del header Authorization. */
 export function extractBearerToken(authorizationHeader: string | null): string | null {
   if (!authorizationHeader) return null;
-  const [scheme, token] = authorizationHeader.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return token.trim();
+  const match = /^Bearer\s+(.+)$/i.exec(authorizationHeader.trim());
+  if (!match?.[1]) return null;
+  return normalizeAuthToken(match[1]);
+}
+
+/**
+ * Lee el JWT de la cookie.
+ * Next ya puede haber decodificado el valor; solo apply decodeURIComponent si queda %XX.
+ */
+export function decodeAuthCookieValue(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  let value = raw.trim();
+  if (!value) return null;
+  if (/%[0-9A-Fa-f]{2}/.test(value)) {
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      // mantener value
+    }
+  }
+  return normalizeAuthToken(value);
 }

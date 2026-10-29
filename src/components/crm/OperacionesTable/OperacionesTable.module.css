@@ -1,0 +1,75 @@
+.wrap {
+  overflow: auto;
+  margin-top: 4px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: #697189;
+  font-weight: 700;
+  border-bottom: 1px solid #e8ebf3;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 10px;
+  border-bottom: 1px solid #f0f2f8;
+  color: #202847;
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.amount {
+  font-weight: 700;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tipoFactura {
+  background: #e8f7ee;
+  color: #16834c;
+}
+
+.tipoPedido {
+  background: #e8eefc;
+  color: #3b5bcc;
+}
+
+.tipoOtro {
+  background: #f0f2f8;
+  color: #4d5878;
+}
+
+.estadoFacturada {
+  background: #e8f7ee;
+  color: #16834c;
+}
+
+.estadoCuenta {
+  background: #fff3e8;
+  color: #c45f12;
+}
