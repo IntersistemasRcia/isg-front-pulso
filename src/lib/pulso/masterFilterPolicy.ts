@@ -34,7 +34,8 @@ export const MASTER_DIMENSIONS: readonly MasterDimension[] = [
     /** Incluye SubrubroDesde/Hasta de ranking. */
     paramKeys: /^(id)?sub[\s_]?rubro(desde|hasta)?$/i,
     idColumns: /^id[\s_]?sub[\s_]?rubro$/i,
-    labelColumns: /^sub[\s_]?rubro$/i,
+    /** Informes: Subrubro; Catalogo_*: Descripcion. */
+    labelColumns: /^(sub[\s_]?rubro|descripcion)$/i,
     spNameTokens: /subrubro/i,
   },
   {
@@ -675,4 +676,264 @@ export function detectOmittedMasterFilters(options: {
   }
 
   return out;
+}
+
+/** Orden de resolución: padres antes que hijos (rubro → subrubro). */
+const FILTER_HINT_ORDER = [
+  "rubro",
+  "subrubro",
+  "marca",
+  "sector",
+  "sucursal",
+  "zona",
+  "vendedor",
+] as const;
+
+function sortIntentsForHint(intents: MasterIntent[]): MasterIntent[] {
+  return [...intents].sort((a, b) => {
+    const ia = FILTER_HINT_ORDER.indexOf(
+      a.dimension.id as (typeof FILTER_HINT_ORDER)[number],
+    );
+    const ib = FILTER_HINT_ORDER.indexOf(
+      b.dimension.id as (typeof FILTER_HINT_ORDER)[number],
+    );
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+}
+
+/**
+ * Checklist determinístico para el system prompt: filtros que el turno exige.
+ */
+export function formatRequiredFiltersHint(userText: string): string | undefined {
+  const intents = sortIntentsForHint(
+    extractMasterIntents(userText).filter((i) => Boolean(i.code || i.nameHint)),
+  );
+  if (!intents.length) return undefined;
+
+  const lines = intents.map((intent) => {
+    const dim = intent.dimension.id;
+    if (intent.code && intent.nameHint) {
+      return `- ${dim}: «${intent.nameHint}» código ${intent.code} → usá ese código en el informe`;
+    }
+    if (intent.code) {
+      return `- ${dim}: código ${intent.code} → insertalo en los params del informe`;
+    }
+    const catalogHint =
+      dim === "subrubro"
+        ? `Catalogo_Subrubros (filtrá por rubro ya resuelto o Buscar «${intent.nameHint}»)`
+        : `Catalogo_* de ${dim}`;
+    return `- ${dim}: «${intent.nameHint}» → resolvé con ${catalogHint} → código en params del informe`;
+  });
+
+  return [
+    "FILTROS OBLIGATORIOS de este turno (no omitir ninguno):",
+    ...lines,
+    "PROHIBIDO ejecutar el informe de negocio hasta tener TODOS esos códigos en los parámetros.",
+    "Resolvé maestros con Catalogo_* (uiSilent) y después UNA sola llamada al informe con todos juntos.",
+  ].join("\n");
+}
+
+export type UnresolvedNamedMaster = {
+  dimension: string;
+  nameHint?: string;
+  code?: string;
+  /** La firma del SP no tiene param de esta dimensión. */
+  spHasNoFilter?: boolean;
+};
+
+function numericParamValuesForDimension(
+  params: Record<string, unknown>,
+  dim: MasterDimension,
+): string[] {
+  const out: string[] = [];
+  for (const [k, v] of Object.entries(params)) {
+    if (!paramKeyMatchesDimension(k, dim)) continue;
+    if (!isNumericCode(v)) continue;
+    out.push(String(v).trim());
+  }
+  return out;
+}
+
+/**
+ * Hard gate: el usuario nombró maestro(s) pero el informe no trae esos códigos
+ * en params (o el SP no filtra por esa dim). Catalogo_* queda exento.
+ */
+export function detectUnresolvedNamedMasters(options: {
+  userText: string | undefined;
+  coercedParams: Record<string, unknown>;
+  nombreSp: string;
+  /** Nombres de params de la firma del SP (si se conoce). */
+  availableParamKeys?: string[];
+}): UnresolvedNamedMaster[] {
+  const { userText, coercedParams, nombreSp, availableParamKeys } = options;
+  if (!userText?.trim()) return [];
+  if (looksLikeMasterListSp(nombreSp) || isMasterListSpName(nombreSp)) {
+    return [];
+  }
+
+  const intents = extractMasterIntents(userText).filter((i) =>
+    Boolean(i.code || i.nameHint),
+  );
+  if (!intents.length) return [];
+
+  const out: UnresolvedNamedMaster[] = [];
+
+  for (const intent of intents) {
+    const dim = intent.dimension;
+    if (availableParamKeys && availableParamKeys.length > 0) {
+      const hasFilter = availableParamKeys.some((k) =>
+        paramKeyMatchesDimension(k, dim),
+      );
+      if (!hasFilter) {
+        out.push({
+          dimension: dim.id,
+          nameHint: intent.nameHint,
+          code: intent.code,
+          spHasNoFilter: true,
+        });
+        continue;
+      }
+    }
+
+    const values = numericParamValuesForDimension(coercedParams, dim);
+    if (!values.length) {
+      out.push({
+        dimension: dim.id,
+        nameHint: intent.nameHint,
+        code: intent.code,
+      });
+      continue;
+    }
+
+    if (intent.code) {
+      const want = intent.code.trim();
+      const ok = values.every((v) => v === want);
+      if (!ok) {
+        out.push({
+          dimension: dim.id,
+          nameHint: intent.nameHint,
+          code: intent.code,
+        });
+      }
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Tras Catalogo_* sin maestroResuelto pero con nameHint: forzar reintento filtrado.
+ */
+export function appendMasterNameNotInPreviewHint(
+  payload: Record<string, unknown>,
+  options: {
+    userText: string;
+    nombreSp: string;
+    /** Firma del SP para sugerir IDRubro/Buscar/etc. */
+    parametrosEsperados?: string;
+  },
+): Record<string, unknown> {
+  const { userText, nombreSp, parametrosEsperados } = options;
+  if (payload.ok !== true) return payload;
+  if (!looksLikeMasterListSp(nombreSp) && !isMasterListSpName(nombreSp)) {
+    return payload;
+  }
+  if (payload.maestroResuelto != null) return payload;
+
+  const dim = inferMasterDimensionFromSpName(nombreSp);
+  if (!dim) return payload;
+
+  const intent = extractMasterIntents(userText).find(
+    (i) => i.dimension.id === dim.id && Boolean(i.nameHint || i.code),
+  );
+  if (!intent) return payload;
+  // Código explícito sin nombre: no exige match por etiqueta en el preview
+  if (intent.code && !intent.nameHint) return payload;
+  if (!intent.nameHint) return payload;
+
+  const label = intent.nameHint;
+  const prev =
+    typeof payload.avisoUsuario === "string" ? payload.avisoUsuario.trim() : "";
+  const filterHint = parametrosEsperados
+    ? `Firma de este catálogo: ${parametrosEsperados}. Reejecutá con filtro (p. ej. IDRubro del rubro ya resuelto, Buscar=«${label}», o el param de búsqueda de la firma).`
+    : `Reejecutá este catálogo filtrando por el nombre «${label}» o por el código del maestro padre (rubro) si aplica. NO bajes el listado completo.`;
+
+  return {
+    ...payload,
+    code: "MASTER_NAME_NOT_IN_PREVIEW",
+    avisoUsuario: [
+      prev,
+      `MASTER_NAME_NOT_IN_PREVIEW: pediste ${dim.id} «${label}» pero no está en el adelanto (o no hubo match).`,
+      filterHint,
+      "PROHIBIDO ejecutar el informe todavía. PROHIBIDO presentar este listado al usuario.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
+/**
+ * Acota filas del catálogo a las que matchean nameHint / código resuelto (menos tokens).
+ */
+export function narrowCatalogRowsToMasterMatch(
+  payload: Record<string, unknown>,
+  userText: string,
+  nombreSp: string,
+): Record<string, unknown> {
+  if (payload.ok !== true) return payload;
+  if (!looksLikeMasterListSp(nombreSp) && !isMasterListSpName(nombreSp)) {
+    return payload;
+  }
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  if (!rows.length) return payload;
+
+  const dim =
+    inferMasterDimensionFromSpName(nombreSp) ??
+    extractMasterIntents(userText).find((i) => i.nameHint || i.code)?.dimension;
+  if (!dim) return payload;
+
+  const intent = extractMasterIntents(userText).find(
+    (i) => i.dimension.id === dim.id && Boolean(i.nameHint || i.code),
+  );
+  const resolved = payload.maestroResuelto as
+    | { codigo?: string; nombre?: string }
+    | undefined;
+
+  const wantNorm = intent?.nameHint
+    ? normalizeLabel(intent.nameHint)
+    : resolved?.nombre
+      ? normalizeLabel(resolved.nombre)
+      : undefined;
+  const wantCode =
+    intent?.code?.trim() ??
+    (resolved?.codigo != null ? String(resolved.codigo).trim() : undefined);
+
+  if (!wantNorm && !wantCode) return payload;
+
+  const matched = rows.filter((raw) => {
+    if (!raw || typeof raw !== "object") return false;
+    const rec = raw as Record<string, unknown>;
+    let idVal: unknown;
+    let labelVal: unknown;
+    for (const [k, v] of Object.entries(rec)) {
+      if (dim.idColumns.test(k.replace(/\s+/g, ""))) idVal = v;
+      if (dim.labelColumns.test(k.replace(/\s+/g, ""))) labelVal = v;
+    }
+    if (wantCode && idVal != null && String(idVal).trim() === wantCode) {
+      return true;
+    }
+    if (wantNorm && labelVal != null) {
+      const lab = normalizeLabel(labelVal);
+      return lab === wantNorm || lab.includes(wantNorm) || wantNorm.includes(lab);
+    }
+    return false;
+  });
+
+  if (!matched.length) return payload;
+
+  return {
+    ...payload,
+    rows: matched.slice(0, 12),
+    mostrando: Math.min(matched.length, 12),
+  };
 }

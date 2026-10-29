@@ -13,6 +13,7 @@ import {
   buildUserQueryContext,
 } from "@/lib/chat/buildUserQueryContext";
 import { buildPulsoSystemPrompt } from "@/lib/pulso/systemPrompt";
+import { formatRequiredFiltersHint } from "@/lib/pulso/masterFilterPolicy";
 import { buildPulsoTools } from "@/lib/pulso/tools";
 import {
   formatClosestAlternativesHint,
@@ -131,6 +132,7 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
   const userQueryContext = buildUserQueryContext(messages);
   const lastUserQueryText = buildLastUserQueryText(messages);
   const followUpContext = buildFollowUpContextHint(messages);
+  const requiredFiltersHint = formatRequiredFiltersHint(lastUserQueryText);
   const spTopK = definition?.relevantSpTopK;
   const relevantCatalog = selectRelevantSps(userQueryContext, catalog, spTopK);
   const spCandidates: SpCandidateDebug[] = relevantCatalog.map((sp) => ({
@@ -157,6 +159,7 @@ export function prepareChatPrompt(options: PrepareOptions): PreparedChatPrompt {
     historySummary,
     followUpContext,
     alternativesHint,
+    requiredFiltersHint,
   };
 
   let chosenMode: PromptCatalogMode = definition?.promptMode ?? "full";

@@ -10,6 +10,10 @@ import {
   makeMasterLookupSilent,
   userAskedForMasterCatalogList,
   extractMasterIntents,
+  detectUnresolvedNamedMasters,
+  formatRequiredFiltersHint,
+  appendMasterNameNotInPreviewHint,
+  narrowCatalogRowsToMasterMatch,
 } from "./src/lib/pulso/masterFilterPolicy";
 import { buildLastUserQueryText } from "./src/lib/chat/buildUserQueryContext";
 import type { UIMessage } from "ai";
@@ -183,6 +187,107 @@ const lastText = buildLastUserQueryText([
 ] as UIMessage[]);
 console.log("lastUserText", lastText === lastFiambres);
 
+// ── Named masters: Fiambres + COCIDOS ──────────────────────────────────────
+const userCocidos =
+  "mostrame un ranking de ventas del rubro: FIAMBRES, subrubros: COCIDOS, del 01/08/2026 al 12/08/2026";
+
+const checklist = formatRequiredFiltersHint(userCocidos) ?? "";
+const dualIntents = extractMasterIntents(userCocidos);
+const hasRubroIntent = dualIntents.some(
+  (i) => i.dimension.id === "rubro" && /fiambre/i.test(i.nameHint ?? ""),
+);
+const hasSubIntent = dualIntents.some(
+  (i) => i.dimension.id === "subrubro" && /cocido/i.test(i.nameHint ?? ""),
+);
+console.log("checklist", {
+  hasObligatorios: checklist.includes("FILTROS OBLIGATORIOS"),
+  hasRubroIntent,
+  hasSubIntent,
+  checklistSnippet: checklist.slice(0, 180),
+});
+
+const unresolvedOnlyRubro = detectUnresolvedNamedMasters({
+  userText: userCocidos,
+  coercedParams: { Rubro: 2103, FechaDesde: "01/08/2026", FechaHasta: "12/08/2026" },
+  nombreSp: "sp_ISG_Vision_rankingventas_por_articulo",
+  availableParamKeys: [
+    "FechaDesde",
+    "FechaHasta",
+    "RubroDesde",
+    "RubroHasta",
+    "SubrubroDesde",
+    "SubrubroHasta",
+    "TipoRanking",
+  ],
+});
+console.log("unresolvedOnlyRubro", unresolvedOnlyRubro);
+
+const unresolvedOk = detectUnresolvedNamedMasters({
+  userText: userCocidos,
+  coercedParams: {
+    RubroDesde: 2103,
+    RubroHasta: 2103,
+    SubrubroDesde: 811,
+    SubrubroHasta: 811,
+  },
+  nombreSp: "sp_ISG_Vision_rankingventas_por_articulo",
+  availableParamKeys: [
+    "RubroDesde",
+    "RubroHasta",
+    "SubrubroDesde",
+    "SubrubroHasta",
+  ],
+});
+console.log("unresolvedOk", unresolvedOk);
+
+const catalogExempt = detectUnresolvedNamedMasters({
+  userText: userCocidos,
+  coercedParams: {},
+  nombreSp: "sp_ISG_Vision_Catalogo_Subrubros",
+});
+console.log("catalogExempt", catalogExempt);
+
+const subPreviewNoMatch = appendMasterNameNotInPreviewHint(
+  {
+    ok: true,
+    uiTable: false,
+    nombreSp: "sp_ISG_Vision_Catalogo_Subrubros",
+    rows: [{ IDSubrubro: 179, Descripcion: "ACEITUNAS", IDRubro: 38 }],
+  },
+  {
+    userText: userCocidos,
+    nombreSp: "sp_ISG_Vision_Catalogo_Subrubros",
+    parametrosEsperados: "IDRubro, Buscar",
+  },
+);
+console.log("subPreviewNoMatch", {
+  code: subPreviewNoMatch.code,
+  hasHint:
+    typeof subPreviewNoMatch.avisoUsuario === "string" &&
+    subPreviewNoMatch.avisoUsuario.includes("MASTER_NAME_NOT_IN_PREVIEW"),
+});
+
+const subRows = [
+  { IDSubrubro: 796, Descripcion: "ARROLLADOS", IDRubro: 2103 },
+  { IDSubrubro: 811, Descripcion: "COCIDOS", IDRubro: 2103 },
+  { IDSubrubro: 850, Descripcion: "SALAMES", IDRubro: 2103 },
+];
+const resolvedSub = resolveMasterFromCatalogRows({
+  userText: userCocidos,
+  nombreSp: "sp_ISG_Vision_Catalogo_Subrubros",
+  rows: subRows,
+});
+const narrowed = narrowCatalogRowsToMasterMatch(
+  appendMaestroResueltoHint(
+    { ok: true, nombreSp: "sp_ISG_Vision_Catalogo_Subrubros", rows: subRows },
+    resolvedSub,
+  ),
+  userCocidos,
+  "sp_ISG_Vision_Catalogo_Subrubros",
+);
+console.log("resolvedSub", resolvedSub);
+console.log("narrowedRows", Array.isArray(narrowed.rows) ? narrowed.rows.length : 0);
+
 const pass =
   mismatch?.code === "MASTER_MISMATCH" &&
   mismatch.expectedName?.toLowerCase().includes("fiambre") &&
@@ -203,7 +308,18 @@ const pass =
   !/es\s+2101/i.test(rubroParse.nameHint) &&
   /queso/i.test(rubroParse.nameHint) &&
   resolvedFiambresOnly?.codigo === "2103" &&
-  lastText === lastFiambres;
+  lastText === lastFiambres &&
+  checklist.includes("FILTROS OBLIGATORIOS") &&
+  hasRubroIntent &&
+  hasSubIntent &&
+  unresolvedOnlyRubro.length === 1 &&
+  unresolvedOnlyRubro[0]?.dimension === "subrubro" &&
+  unresolvedOk.length === 0 &&
+  catalogExempt.length === 0 &&
+  subPreviewNoMatch.code === "MASTER_NAME_NOT_IN_PREVIEW" &&
+  resolvedSub?.codigo === "811" &&
+  Array.isArray(narrowed.rows) &&
+  narrowed.rows.length === 1;
 
 console.log(pass ? "PASS" : "FAIL");
 process.exit(pass ? 0 : 1);

@@ -49,6 +49,9 @@ function buildModelSummary(output: unknown): Record<string, unknown> {
       missingRequired: o.missingRequired,
       ...(o.masterMismatch != null ? { masterMismatch: o.masterMismatch } : {}),
       ...(o.omittedFilters != null ? { omittedFilters: o.omittedFilters } : {}),
+      ...(o.unresolvedMasters != null
+        ? { unresolvedMasters: o.unresolvedMasters }
+        : {}),
       ...(Array.isArray(o.warnings) && o.warnings.length
         ? { warnings: o.warnings }
         : {}),
