@@ -31,10 +31,13 @@ import { toEjecutarConsultaModelOutput } from "@/lib/pulso/toEjecutarConsultaMod
 import {
   appendMaestroResueltoHint,
   appendMasterMismatchHint,
+  appendMasterNameNotInPreviewHint,
   detectMasterMismatch,
   detectOmittedMasterFilters,
+  detectUnresolvedNamedMasters,
   looksLikeMasterListSp,
   makeMasterLookupSilent,
+  narrowCatalogRowsToMasterMatch,
   pickMasterCatalogAlternatives,
   resolveMasterFromCatalogRows,
   userAskedForMasterCatalogList,
@@ -178,6 +181,7 @@ function annotateMasterMismatch(
   userQueryContext: string | undefined,
   parametros: Record<string, unknown>,
   lastUserQueryText?: string,
+  catalogSp?: SpArquitectura,
 ): Record<string, unknown> {
   const nombreSp =
     typeof payload.nombreSp === "string" ? payload.nombreSp : "";
@@ -207,6 +211,17 @@ function annotateMasterMismatch(
         rows,
       });
       next = appendMaestroResueltoHint(payload, resolved);
+
+      if (isMasterSp) {
+        next = narrowCatalogRowsToMasterMatch(next, masterText, nombreSp);
+        next = appendMasterNameNotInPreviewHint(next, {
+          userText: masterText,
+          nombreSp,
+          parametrosEsperados: catalogSp
+            ? formatSpParamHint(catalogSp)
+            : undefined,
+        });
+      }
     }
   }
 
@@ -407,9 +422,70 @@ export function buildEjecutarConsultaPulsoTool(
         };
       }
 
+      const masterGateText =
+        lastUserQueryText?.trim() || userQueryContext?.trim() || "";
+      const availableParamKeys = catalogSp
+        ? getSpParametros(catalogSp).map((p) => p.nombre)
+        : undefined;
+
+      // Usuario nombró maestros → deben estar como código en params del informe
+      const unresolvedMasters = detectUnresolvedNamedMasters({
+        userText: masterGateText,
+        coercedParams: parametrosRecord,
+        nombreSp,
+        availableParamKeys,
+      });
+      if (unresolvedMasters.length > 0) {
+        const dims = unresolvedMasters.map((u) => u.dimension).join(", ");
+        const detail = unresolvedMasters
+          .map((u) => {
+            const label = u.nameHint
+              ? `«${u.nameHint}»`
+              : u.code
+                ? `código ${u.code}`
+                : u.dimension;
+            return u.spHasNoFilter
+              ? `${u.dimension} ${label} (este SP no filtra por ${u.dimension})`
+              : `${u.dimension} ${label}`;
+          })
+          .join("; ");
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "MASTER_FILTER_UNRESOLVED",
+          paramsKeys,
+        });
+        return {
+          ok: false,
+          code: "MASTER_FILTER_UNRESOLVED",
+          nombreSp,
+          unresolvedMasters,
+          warnings: warnings.length ? warnings : undefined,
+          parametrosEsperados: catalogSp
+            ? formatSpParamHint(catalogSp)
+            : undefined,
+          parametrosEnviados: raw,
+          parametrosEfectivos: parametrosRecord,
+          avisoUsuario: [
+            `MASTER_FILTER_UNRESOLVED: faltan filtros de maestro en el informe (${detail}).`,
+            "NO presentes ningún listado. Resolvé cada maestro con Catalogo_* (tomá maestroResuelto.codigo) y reejecutá el informe con TODOS los códigos juntos.",
+            unresolvedMasters.some((u) => u.spHasNoFilter)
+              ? `Este SP no tiene param para: ${unresolvedMasters
+                  .filter((u) => u.spHasNoFilter)
+                  .map((u) => u.dimension)
+                  .join(", ")}. Elegí otro SP del catálogo que sí filtre por ${dims}.`
+              : catalogSp
+                ? `Firma: ${formatSpParamHint(catalogSp)}. Insertá los códigos en los params de filtro de ${dims}.`
+                : `Insertá los códigos de ${dims} en los parámetros del informe.`,
+            "Al usuario: no digas que el informe ya está filtrado; corregí y reejecutá.",
+          ].join(" "),
+        };
+      }
+
       // Filtro maestro enviado pero omitido por coerce → no ejecutar sin filtrar
       const omittedFilters = detectOmittedMasterFilters({
-        userText: userQueryContext,
+        userText: masterGateText,
         rawParams: raw,
         coercedParams: parametrosRecord,
       });
@@ -532,6 +608,7 @@ export function buildEjecutarConsultaPulsoTool(
             userQueryContext,
             parametrosRecord,
             lastUserQueryText,
+            catalogSp,
           );
         }
 
@@ -556,6 +633,7 @@ export function buildEjecutarConsultaPulsoTool(
             userQueryContext,
             parametrosRecord,
             lastUserQueryText,
+            catalogSp,
           );
         }
 
@@ -579,6 +657,7 @@ export function buildEjecutarConsultaPulsoTool(
             userQueryContext,
             parametrosRecord,
             lastUserQueryText,
+            catalogSp,
           );
         }
 
@@ -597,6 +676,7 @@ export function buildEjecutarConsultaPulsoTool(
             userQueryContext,
             parametrosRecord,
             lastUserQueryText,
+            catalogSp,
           );
         }
 
@@ -630,6 +710,7 @@ export function buildEjecutarConsultaPulsoTool(
           userQueryContext,
           parametrosRecord,
           lastUserQueryText,
+          catalogSp,
         );
       } catch (error) {
         const message =

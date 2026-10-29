@@ -10,6 +10,8 @@ type BuildSystemPromptOptions = {
   followUpContext?: string;
   /** Top ranking formateado para ofrecer alternativas cercanas. */
   alternativesHint?: string;
+  /** Checklist de maestros detectados en el último mensaje user. */
+  requiredFiltersHint?: string;
   promptMode?: PromptCatalogMode;
   /** Fecha ancla del servidor (default: ahora). */
   now?: Date;
@@ -33,6 +35,7 @@ export function buildPulsoSystemPrompt({
   historySummary,
   followUpContext,
   alternativesHint,
+  requiredFiltersHint,
   promptMode = "full",
   now = new Date(),
 }: BuildSystemPromptOptions): string {
@@ -83,13 +86,17 @@ export function buildPulsoSystemPrompt({
     "- Reposición NO es MoM ni ranking de ventas; ranking de ventas NO estima cantidad a comprar.",
 
     "## Filtros de maestros (rubro, subrubro, marca, sector, sucursal, zona, vendedor, …)",
+    "- Si aparece el bloque «FILTROS OBLIGATORIOS de este turno», respetalo al pie de la letra: cada ítem es un filtro que DEBE llegar al informe.",
     "- Prioridad 1 — código explícito: si el usuario (en este turno o en el mensaje más reciente que lo declare) dio un código para esa dimensión («rubro 2103», «subrubro 818», «sucursal 1», «marca 45»), ESE valor gana. Descartá códigos anteriores de la misma dimensión del historial.",
     "- Prioridad 2 — nombre sin código («Fiambres», «quesos blandos», «Resistencia»): OBLIGATORIO resolver con el SP maestro del catálogo (Catalogo_* o Get* que FIGURE en el catálogo con TIPO: CATALOGO) ANTES del informe. NUNCA inventes GetRubros/GetMarcas/GetSectores fantasmas.",
     "- Prioridad 3 — follow-up sin cambio: solo reutilizá el último código de esa dimensión si el usuario NO cambió el nombre ni el código. Si cambió una dimensión, invalidá solo esa; las demás pueden seguir.",
     "- PROHIBIDO reutilizar un Rubro/código de rubro/subrubro/marca/sucursal/sector del historial cuando el pedido actual trae OTRO nombre o código de esa misma dimensión (ej. hilo de quesos 2101 → pedido «Fiambres» → resolvé de nuevo; no mandes 2101).",
-    "- Flujo correcto: resolvé TODOS los maestros faltantes (rubro, sucursal, …) con Catalogo_* (sin modoResultado=completo; uiSilent) y después UNA sola llamada al informe con TODOS los códigos juntos (IDRubro + IDSucursal + fechas + DiasReposicion si aplica). NO ejecutes el informe solo con el último maestroResuelto.",
+    "- Flujo correcto: resolvé TODOS los maestros nombrados (1..N: rubro, subrubro, marca, sucursal, …) con Catalogo_* (sin modoResultado=completo; uiSilent) y después UNA sola llamada al informe con TODOS los códigos juntos. NO ejecutes el informe solo con el último maestroResuelto ni omitiendo un filtro pedido.",
+    "- Subrubro: si ya resolviste el rubro, Catalogo_Subrubros CON filtro de ese rubro (o Buscar). NUNCA bajes el catálogo completo de 800+ filas sin filtrar.",
     "- PROHIBIDO apilar varios listados en el mismo turno (varios informes). Si MASTER_MISMATCH: corregí el código y reejecutá el informe UNA vez; no vuelvas a bajar el catálogo entero si ya tenés maestroResuelto/filasMaestro.",
     "- Si la tool trae MASTER_MISMATCH (ok:false): el informe NO se mostró porque el filtro no calza (ej. pediste Fiambres y las filas eran QUESOS). NO digas que ya tenés el informe. Ejecutá Catalogo_* de esa dimensión solo si aún no lo resolviste, leé maestroResuelto.codigo (o filasMaestro) y reejecutá el informe con ese código. PROHIBIDO reusar el código viejo del hilo.",
+    "- Si la tool trae MASTER_FILTER_UNRESOLVED (ok:false): faltan códigos de maestros que el usuario pidió. NO presentes listado. Resolvé Catalogo_* de cada unresolvedMasters y reejecutá el informe con TODOS los filtros.",
+    "- Si la tool trae MASTER_NAME_NOT_IN_PREVIEW: el nombre no estaba en el adelanto. Reejecutá el catálogo filtrado (IDRubro/Buscar). NO pases al informe todavía.",
     "- Si la tool trae FILTER_PARAM_OMITTED (ok:false): el filtro de maestro NO se aplicó. NO presentes el listado. Reejecutá con el nombre exacto de parametrosEsperados o cambiá al SP del catálogo que sí filtre por ese maestro (p. ej. reposicion con IDRubro).",
     "- Si la tool trae maestroResuelto tras un Catalogo_*: guardá ese código y, cuando tengas todos los maestros del pedido, ejecutá el informe con todos. Match exacto = NO pidas confirmación al usuario.",
     "- Si existe una consulta auxiliar CATALOGO del maestro, usala primero para resolver nombres→código y después el informe.",
@@ -162,6 +169,10 @@ export function buildPulsoSystemPrompt({
 
   if (alternativesHint) {
     parts.push(alternativesHint);
+  }
+
+  if (requiredFiltersHint) {
+    parts.push(requiredFiltersHint);
   }
 
   if (historySummary) {
