@@ -39,9 +39,11 @@ El front reenvía el token del login (`Authorization: Bearer …`) en cada llama
 
 ## GET /SPs_arquitectura — respuesta slim (default)
 
-Fuente: [SqlEjecutorService.cs](https://github.com/IntersistemasRcia/isg-api-pulso/blob/develop/isg-api-pulso/Services/SqlEjecutorService.cs) (`sys.procedures` + `sys.parameters` + comentario `-- Pulso:` / `/*-- Pulso:` en `sys.sql_modules`, max 3000 chars).
+Fuente: [SqlEjecutorService.cs](https://github.com/IntersistemasRcia/isg-api-pulso/blob/develop/isg-api-pulso/Services/SqlEjecutorService.cs) (`sys.procedures` + `sys.parameters` + comentario `-- Pulso:` / `/*-- Pulso:` en `sys.sql_modules`).
 
-**Cambio requerido en backend:** en `TryExtractPulsoComment`, `const int maxLen = 1000` → `3000`. Actualizar el comentario de `SpArquitecturaDto.Descripcion` (aún puede decir “máx 500”). Sin ese deploy, el API seguirá truncando a 1000 aunque el front acepte 3000.
+**Parser Pulso (`TryExtractPulsoComment`):** en `develop` remoto el tope es **`maxLen = 3000`** (commit *Increase max length for content truncation to 3000 chars*). El front alinea con `PULSO_DESC_PROMPT_MAX = 3000`. Si un entorno truncara a 1000, el clone/deploy de isg-api-pulso está **atrasado** respecto a `develop` → `git pull` / redeploy.
+
+**Deuda cosmética en API:** el comentario de `SpArquitecturaDto.Descripcion` puede seguir diciendo “máx 500”; no afecta el runtime (solo el XML/comentario del DTO).
 
 ```json
 [
@@ -181,22 +183,38 @@ Fuente en backend (`EjecutorController.cs`, clase `PeticionSpDto`):
 
 **Compat:** si el API aún devuelve un array crudo de filas, el front lo normaliza a `{ ok, rows, totalRows }`.
 
-**Body opcional:** `limiteFilas` — el API debería materializar como máximo N filas en la respuesta (el SP puede seguir corriendo entero en SQL Server).
+**Body opcional:** `limiteFilas` — el API materializa como máximo N filas en la respuesta (sentinel `N+1`; el SP puede seguir corriendo en SQL Server). Sin `limiteFilas`, aplica cap de seguridad `MaxFilasSinLimite` (default **50000**, configurable en appsettings).
 
-**Tokens (historial):** el front compacta tool outputs de turnos previos y reaplica `toModelOutput` al convertir a mensajes del modelo (`convertToModelMessages` + tools), para no reenviar `rows` al LLM.
+**Tokens (historial):** el front compacta tool outputs de turnos previos (`compactUiMessagesForModel`) y reaplica `toModelOutput` al convertir a mensajes del modelo, para no reenviar `rows` al LLM. La ventana de historial es **por modelo** (`messageWindowSize` en el registry / local LLM; default de `windowMessages` = 12 si el modelo no define otra).
 
 **Errores:** `{ "error": "...", "detalle": "..." }` con HTTP 400/500.
 
 ### Gate de resultados grandes
 
-Umbral de negocio: **50 filas**.
+Umbral de negocio: **50 filas** (`RESULT_LARGE_THRESHOLD` en `resultSizeGate.ts`).
 
-1. Primera ejecución: `limiteFilas: 50` (probe).
+1. Primera ejecución (sin `modoResultado`): `limiteFilas: 50` (probe).
 2. Si el API responde con **`totalRows` real** + `truncated` / `totalRowsExact: true` → el front muestra adelanto de 50, dice el total exacto y **no** trae todo el listado todavía.
 3. Excel solo con `modoResultado=completo` y **más de 50** filas.
-4. Si el API aún no da COUNT (`totalRowsExact: false` o `totalRows` = tamaño del lote) → el front dice “más de 50” y no inventa 51.
+4. Si el COUNT no es fiable (`totalRowsExact: false` o `totalRows` = tamaño del lote) → el front dice “más de 50” y **no inventa 51**.
 
-Contrato backend detallado + prompt para isg-api-pulso: [`docs/BACKEND_EJECUTAR_SP_RESULT_SIZE.md`](./BACKEND_EJECUTAR_SP_RESULT_SIZE.md).
+#### Contrato API (ya en `develop`)
+
+| Campo | Significado |
+|-------|-------------|
+| `rows` | Hasta N filas materializadas |
+| `truncated` | Hubo más filas que el límite (o se chocó el cap sin límite) |
+| `totalRows` | Total reportado (idealmente COUNT real) |
+| `totalRowsExact` | `true` solo si el total se contó de verdad |
+| `limiteFilas` | Eco del body (o `null`) |
+
+Comportamiento verificado en [SqlEjecutorService.cs](https://github.com/IntersistemasRcia/isg-api-pulso/blob/develop/isg-api-pulso/Services/SqlEjecutorService.cs): `IDataReader` + sentinel `limiteFilas+1`; si `truncated`, un 2.º pass puede contar filas (correcto pero costoso en CPU/DB).
+
+| Respuesta API | Front |
+|---------------|--------|
+| `truncated` + `totalRowsExact: true` + total > 50 | Adelanto 50 + dice el total; Excel solo con `modoResultado=completo` |
+| `totalRowsExact: false` | Dice “más de 50”; no inventa 51 |
+| `totalRows ≤ 50` | Tabla completa, sin Excel |
 
 ## Reglas de negocio (backend)
 
@@ -239,10 +257,11 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 | `IDSucursal` sale `requerido: true` con `= NULL` | Backend sin parseo de firma o LS viejo. Redeploy + clear `pulso.sp.arquitectura.v3` |
 | Ver SPs candidatos del turno | Network → `POST /api/chat` → headers `X-Pulso-Sp-Candidates`, o chat `?debug=1` |
 | Ver SP **ejecutado** / fallido | `pm2 logs` → `[pulso] exec sp=… ok=… paramsKeys=… missing=…`; o `?debug=1` → “SP ejecutado / intentado” |
-| `messages` vs `raw_messages` en log `[chat]` | `raw_messages` = historial del cliente; `messages` = tras `windowMessages` (últimos 12). Tokens crecen con la ventana + tool results (`tool_results_kb`) |
-| Chat muestra “51 marcas” y luego 1962 | API sin COUNT real (`totalRows`=lote). Ver `BACKEND_EJECUTAR_SP_RESULT_SIZE.md`. Front ya no afirma 51 si `totalRowsExact=false`. |
+| `messages` vs `raw_messages` en log `[chat]` | `raw_messages` = historial del cliente; `messages` = tras `windowMessages` (**ventana por modelo**, p. ej. 4 en Groq/local, 10–12 en otros). Tokens crecen con la ventana + tool results (`tool_results_kb`) |
+| Chat muestra “51 marcas” y luego 1962 | API sin COUNT real (`totalRows`=lote / `totalRowsExact=false`). Front ya no afirma 51 en ese caso |
 | “Ver todos” solo muestra ~50 filas | Pedir `modoResultado=completo` → Excel + adelanto 50 |
-| `limiteFilas` no reduce payload | Backend aún no implementa el wrapper; el front igual hace gate si detecta overflow |
+| `limiteFilas` no reduce payload | Deploy de isg-api-pulso sin wrapper; el front igual hace gate si detecta overflow. En `develop` el wrapper ya existe |
+| Descripciones cortadas a ~1000 chars | API/deploy atrasado respecto a `develop` (`maxLen` ya es 3000) |
 
 ## Debug operativo (PM2 + `?debug=1`)
 
@@ -250,160 +269,19 @@ El header muestra **Sesión activa** y **ERP conectado** (o el error traducido).
 - Chat con `?debug=1`: panel con candidatos (headers) + **todas** las tool calls del último turno assistant (ok / fail / missing).
 - No hay header `X-Pulso-Sp-Executed` (streaming lo vaciaría); la fuente de verdad en servidor es el log.
 
-## Prompt para `limiteFilas` + wrapper en isg-api-pulso
+## Estado de contratos en isg-api-pulso (`develop`)
 
-Copiar en el repo [isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso) (rama `develop`):
+Ya implementado (no rehacer con prompts históricos):
 
-```
-Trabajá en isg-api-pulso (ASP.NET, Dapper, SQL Server).
+| Contrato | Estado |
+|----------|--------|
+| Wrapper `ejecutar-sp` (`ok` / `rows` / `totalRows` / `truncated` / `limiteFilas` / `totalRowsExact`) | Sí |
+| Sentinel `limiteFilas + 1` + cap `MaxFilasSinLimite` (default 50000) | Sí |
+| `tieneDefault` / `requerido = !tieneDefault` (firma T-SQL + `has_default_value`) | Sí |
+| `descripcion` desde `-- Pulso:` / `/*-- Pulso:` | Sí |
+| `TryExtractPulsoComment` tope **3000** chars | Sí (`develop` ≥ `7d3b052`) |
 
-Objetivo: POST /api/v1/pulso/ejecutar-sp debe soportar límite de filas y devolver
-un wrapper JSON (no solo el array crudo), para que el front Pulso pueda avisar
-cuando hay >50 registros sin inundar al LLM.
-
-Cambios en PeticionSpDto / body camelCase:
-- nombreSp (ya existe)
-- parametros (ya existe)
-- limiteFilas?: int?   // opcional
-
-Respuesta exitosa (200) — SIEMPRE este shape (breaking change OK; el front ya lo parsea):
-{
-  "ok": true,
-  "rows": [ /* hasta N objetos */ ],
-  "totalRows": <int>,
-  "truncated": <bool>,
-  "limiteFilas": <int|null>
-}
-
-Reglas:
-1) Si limiteFilas es null/omitido: devolver todas las filas del SP.
-   totalRows = rows.Count, truncated = false, limiteFilas = null.
-2) Si limiteFilas = N (>0):
-   - Materializá como máximo N filas en "rows".
-   - Si el reader/enumerable tenía más: truncated = true.
-   - totalRows: idealmente el total real. Si no podés contarlo sin second pass,
-     usá al menos rows.Count y truncated=true cuando cortaste (el front trata
-     truncated||totalRows>50 como RESULT_LARGE).
-   - Preferí no bufferizar en memoria más de N+1 filas al armar la respuesta
-     (IDataReader / Take(N+1)).
-3) Prefijo sp_ISG_Vision_ y auth JWT sin cambios.
-4) Errores 400/500 siguen { error, detalle }.
-5) No hace falta endpoint /analizar-sp ni COUNT por SP: el “análisis” es
-   totalRows/truncated de esta ejecución.
-
-Archivos típicos: Models (PeticionSpDto), Controllers/EjecutorController.cs,
-Services/SqlEjecutorService.cs, ISqlEjecutorService.cs.
-
-Aceptación:
-- Sin limiteFilas → wrapper con todas las filas, truncated=false.
-- Con limiteFilas=50 y SP que devuelve 200 → rows.Length<=50, truncated=true,
-  totalRows>=50 (mejor si totalRows=200).
-- Front Pulso: primera llamada con limiteFilas=51; si truncated o totalRows>50
-  muestra al usuario opciones (filtros / primeros 50 / completo).
-```
-
-## Prompt para implementar `requerido` / `tieneDefault` en isg-api-pulso
-
-Copiar en el repo [isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso) (rama `develop`):
-
-```
-Trabajá en isg-api-pulso (ASP.NET, Dapper, SQL Server).
-
-Problema: GET /api/v1/pulso/SPs_arquitectura marca como requerido parámetros
-opcionales del estilo `@IDSucursal INT = NULL`. El front (Pulso chat) trata
-todo lo que no sea requerido:false como obligatorio y pide sucursal al usuario
-aunque el SP no la necesite.
-
-Causa: sys.parameters.has_default_value NO se popula para SPs T-SQL (docs Microsoft:
-casi siempre 0). No alcanza con `requerido = !has_default_value`.
-
-Objetivo (contrato camelCase slim):
-Cada ítem de parametros[] debe incluir:
-- nombre, tipo, esOutput
-- tieneDefault: bool  (true si la firma declara = default)
-- requerido: bool     (= !tieneDefault para inputs)
-
-Cómo calcular tieneDefault (limpio, sin hacks en el front):
-1) Seguí listando params desde sys.procedures + LEFT JOIN sys.parameters + types
-   (LEFT JOIN para que SPs sin params, p.ej. GetMarcas, aparezcan con parametros: []).
-2) Traé también m.definition desde sys.sql_modules (LEFT JOIN).
-3) Parseá la firma entre CREATE/ALTER PROC … y AS (ignorá comentarios -- y /* */).
-4) Si el parámetro aparece como `@Nombre Tipo … = <valor>` (NULL, número, string N'…'),
-   tieneDefault = true. También OR con has_default_value si alguna vez es 1 (CLR).
-5) requerido = !tieneDefault. Exponé ambos campos en ParametroDto / JSON.
-6) No devolver CodigoSQL en slim (solo usalo en memoria para parseo + comentario -- Pulso:).
-
-Archivos típicos: Services/SqlEjecutorService.cs, Models/SpArquitecturaDto.cs
-(ParametroDto), Controllers/EjecutorController.cs.
-
-Aceptación:
-GET /api/v1/pulso/SPs_arquitectura
-→ sp_ISG_Vision_dash_ventas_medio_pago_resumen
-→ IDSucursal.requerido === false && IDSucursal.tieneDefault === true
-Misma lógica para IDOrigenPedido, Top, ModoOrden y cualquier @Param = default.
-Redeploy Kestrel y verificá el JSON crudo (sin pasar por el front).
-```
-
-## Prompt para implementar `descripcion` en isg-api-pulso
-
-Copiar en el repo [isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso) (rama `develop`):
-
-```
-Trabajá en isg-api-pulso (ASP.NET, Dapper, SQL Server).
-
-Objetivo: GET /api/v1/pulso/SPs_arquitectura (slim, includeSql=false) debe incluir
-"descripcion" (string|null) extraída del comentario Pulso en el código del SP
-(sys.sql_modules.definition), sin fallar si el comentario no existe.
-
-Archivos típicos: Controllers/EjecutorController.cs, Services/SqlEjecutorService.cs,
-Services/ISqlEjecutorService.cs (ajustá a la estructura real del repo).
-
-Listado slim:
-1) sys.procedures WHERE name LIKE 'sp_ISG_Vision_%'
-2) LEFT JOIN sys.sql_modules (definition; puede ser null)
-3) LEFT JOIN sys.parameters + sys.types
-4) Por cada SP: descripcion = TryExtractPulsoComment(definition)
-
-TryExtractPulsoComment(definition):
-A) Si definition es null/vacío → return null. Nunca throw por parseo.
-B) Preferir bloque multilínea:
-   - Buscar (OrdinalIgnoreCase) el primer índice de "/*-- Pulso:"
-   - Desde ahí, buscar el cierre "*/"
-   - Si hay cierre: contenido = texto entre el prefijo y el cierre
-C) Si no hay bloque válido, fallback a línea:
-   - Recorrer líneas; tras TrimStart, la que empiece con "-- Pulso:" (OrdinalIgnoreCase)
-   - Contenido = resto de ESA línea (después de "-- Pulso:")
-D) Normalizar contenido:
-   - Trim
-   - Colapsar whitespace: reemplazar secuencias \s+ por un solo espacio
-   - Si vacío → null
-   - Si length > 3000 → Truncate a 3000 (no cortar a mitad de palabra si es fácil; si no, hard truncate)
-E) Compat: sigue funcionando el viejo formato de una sola línea "-- Pulso: …"
-
-NO soportar / no priorizar:
-- Comentarios /* sin el prefijo exacto /*-- Pulso:
-- Prefijos "--Pulso:" (sin espacio) o "/* Pulso:"
-
-Respuesta slim camelCase por ítem:
-{ nombreSp, descripcion, parametros: [{ nombre, tipo, requerido, tieneDefault, esOutput }] }
-- parametros puede ser []
-- requerido debe ser !tieneDefault (defaults desde firma T-SQL; ver prompt de requerido existente)
-- NO devolver CodigoSQL en slim (solo usarlo en memoria para el comentario)
-- Preferí DTO tipado
-- includeSql=true puede seguir legacy { NombreSP, CodigoSQL }
-- No cambiar POST ejecutar-sp ni el prefijo sp_ISG_Vision_
-
-Tests / aceptación manual:
-1) SP con -- Pulso: una línea corta → descripcion = ese texto
-2) SP con /*-- Pulso: … multilínea … */ (incl. saltos y espacios) → descripcion colapsada, ≤3000
-3) SP con bloque >3000 chars útiles → descripcion length === 3000
-4) SP sin comentario Pulso → descripcion null, HTTP 200
-5) definition null → descripcion null, sin 500
-6) SP solo con doc /* ... */ sin prefijo Pulso → descripcion null
-
-Verificación: GET /api/v1/pulso/SPs_arquitectura y buscar sp_ISG_Vision_Ventas_IVA_Discriminado
-(u otro con bloque Pulso) → campo descripcion poblado.
-```
+Mejoras opcionales en la API (fuera del front): abaratar el 2.º pass de COUNT al truncar; corregir el comentario del DTO “máx 500” → “máx 3000”.
 
 ## Prompt para agente: generar comentario Pulso de un SP
 

@@ -288,10 +288,17 @@ Un modelo, leyendo solo el comentario Pulso + firma de parámetros, debe poder:
 
 ## 14. Relación con el front
 
-- Catálogo runtime: `GET /SPs_arquitectura` → `descripcion` = texto Pulso.
-- Comportamiento del agente: [`src/lib/pulso/systemPrompt.ts`](../src/lib/pulso/systemPrompt.ts).
-- API / caché: [`docs/PULSO_API.md`](./PULSO_API.md).
+- Catálogo runtime: `GET /SPs_arquitectura` → `descripcion` = texto Pulso (tope **3000** en API `develop` y `PULSO_DESC_PROMPT_MAX`).
+- Comportamiento del agente: [`src/lib/pulso/systemPrompt.ts`](../src/lib/pulso/systemPrompt.ts), pipeline [`src/lib/llm/prepareChatPrompt.ts`](../src/lib/llm/prepareChatPrompt.ts).
+- Filtros maestros (nombre → ID): [`src/lib/pulso/masterFilterPolicy.ts`](../src/lib/pulso/masterFilterPolicy.ts).
+- API / caché / gate de filas: [`docs/PULSO_API.md`](./PULSO_API.md).
+- Multi-LLM / ventana por modelo: [`docs/LLM.md`](./LLM.md).
 - Coerción por intención (params con default peligroso): [`src/lib/pulso/paramIntentPolicy.ts`](../src/lib/pulso/paramIntentPolicy.ts).
+- Catálogos: preferir `sp_ISG_Vision_Catalogo_*` (`TIPO: CATALOGO`); `Get*` es legado compatible.
+
+### Roadmap — COLUMNAS_UI (no implementado)
+
+Idea futura: metadato Pulso / hint para que la UI muestre un subconjunto de columnas en listados grandes. **Hoy no existe** en runtime ni en el parser; no documentar SPs como si ya lo soportaran.
 
 ---
 

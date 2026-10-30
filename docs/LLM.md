@@ -53,6 +53,18 @@ Para cada solicitud de chat, `resolveModel()` aplica:
 
 El cliente (`useChat`) puede enviar mensajes user duplicados en el body. El servidor aplica `normalizeChatMessages()` antes de ventanear el historial.
 
+## Pipeline del chat (`prepareChatPrompt`)
+
+Antes de llamar al modelo, `runChatWithFallback` prepara el turno en [`src/lib/llm/prepareChatPrompt.ts`](../src/lib/llm/prepareChatPrompt.ts):
+
+1. **Compactación** del historial UI (`compactUiMessagesForModel`) — tool results viejos sin `rows` completos.
+2. **Ventana** (`windowMessages`) — últimos N mensajes; **N = `messageWindowSize` del modelo** (p. ej. 4 en Groq/local, ~10–12 en otros; default helper = 12).
+3. **Ranking de SPs** (`selectRelevantSps`) + system prompt (`buildPulsoSystemPrompt`) según `promptMode` del modelo (`full` / `compact` / `minimal` / `tool-only`).
+4. **Hints** de filtros maestros y contexto del último mensaje del usuario (`masterFilterPolicy`, `buildUserQueryContext`).
+5. Tools Pulso (`buildPulsoTools`) — en ejecución, gates `MASTER_*` y `applyParamIntentOverrides` (`paramIntentPolicy`) fuerzan params cuando el texto del usuario lo indica.
+
+Detalle ERP / catálogo: [`docs/PULSO_API.md`](./PULSO_API.md). Metadatos SP: [`docs/PULSO_SP_METADATA.md`](./PULSO_SP_METADATA.md).
+
 ## Fallback ante errores del modelo
 
 | Error | Fallback automático |

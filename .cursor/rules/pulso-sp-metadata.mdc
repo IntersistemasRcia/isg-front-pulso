@@ -16,7 +16,7 @@ Documento completo: [docs/PULSO_SP_METADATA.md](docs/PULSO_SP_METADATA.md).
 4. Incluir PROPÓSITO, GRANULARIDAD (qué representa cada fila), USAR CUANDO y NO USAR PARA. PARÁMETROS con obligatoriedad/defaults/enums.
 5. Fechas: documentar y asumir valores **`dd/MM/yyyy`**.
 6. INTERACCIÓN: qué preguntar; resolver nombres→ID con SP CATALOGO.
-7. Tope ~1000 caracteres; priorizar selección/ejecución sobre SQL interno.
+7. Tope ~3000 caracteres útiles (parser API + `PULSO_DESC_PROMPT_MAX`); priorizar selección/ejecución sobre SQL interno.
 
 ## Al tocar el agente (`systemPrompt` / tools)
 
