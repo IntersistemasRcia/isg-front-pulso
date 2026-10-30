@@ -1,0 +1,69 @@
+{
+  "assets": [
+    {
+      "file": "pulso-icon.svg",
+      "use": "Marca en interfaz; SVG preferido",
+      "transparent": true
+    },
+    {
+      "file": "pulso-bi-hero.svg",
+      "use": "Ilustración BI del panel izquierdo; SVG preferido",
+      "transparent": true
+    },
+    {
+      "file": "pulso-bi-hero.png",
+      "use": "Fallback 900 × 450",
+      "transparent": true
+    },
+    {
+      "file": "pulso-bi-hero@2x.png",
+      "use": "Fallback alta densidad 1800 × 900",
+      "transparent": true
+    },
+    {
+      "file": "login-visual-background.svg",
+      "use": "Fondo escalable del panel izquierdo",
+      "transparent": false
+    },
+    {
+      "file": "login-visual-background.png",
+      "use": "Fallback 900 × 1100",
+      "transparent": false
+    },
+    {
+      "file": "login-visual-background@2x.png",
+      "use": "Fallback alta densidad 1800 × 2200",
+      "transparent": false
+    },
+    {
+      "file": "favicon.ico",
+      "use": "Favicon multipropósito",
+      "transparent": true
+    },
+    {
+      "file": "pulso-icon-32.png",
+      "use": "Ícono PNG 32 × 32",
+      "transparent": true
+    },
+    {
+      "file": "pulso-icon-64.png",
+      "use": "Ícono PNG 64 × 64",
+      "transparent": true
+    },
+    {
+      "file": "pulso-icon-180.png",
+      "use": "Ícono PNG 180 × 180",
+      "transparent": true
+    },
+    {
+      "file": "pulso-icon-192.png",
+      "use": "Ícono PNG 192 × 192",
+      "transparent": true
+    },
+    {
+      "file": "pulso-icon-512.png",
+      "use": "Ícono PNG 512 × 512",
+      "transparent": true
+    }
+  ]
+}

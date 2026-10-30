@@ -1,0 +1,13 @@
+.page {
+  flex: 1;
+  min-height: 0;
+  padding: 22px 27px;
+  background: #f7f7fc;
+  color: #202847;
+}
+
+.message {
+  margin: 0;
+  font-size: 14px;
+  color: #697189;
+}

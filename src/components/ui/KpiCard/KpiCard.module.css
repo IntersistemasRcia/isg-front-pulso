@@ -1,0 +1,204 @@
+.grid {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cols3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cols4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cols6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.section {
+  background: #fff;
+  border: 1px solid #e0e3ee;
+  border-radius: 12px;
+  box-shadow: 0 2px 9px #27306308;
+  padding: 14px 15px;
+  margin-bottom: 12px;
+}
+
+.sectionTitle {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #202847;
+}
+
+.section .grid {
+  margin-bottom: 0;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e0e3ee;
+  border-radius: 12px;
+  box-shadow: 0 2px 9px #27306308;
+  padding: 14px 15px;
+  min-height: 104px;
+}
+
+.section .card {
+  box-shadow: none;
+}
+
+.md {
+  /* default size */
+}
+
+.sm {
+  padding: 10px 12px;
+  min-height: 84px;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.headBody {
+  min-width: 0;
+}
+
+.iconBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 1.25rem;
+  flex: none;
+}
+
+.sm .iconBadge {
+  width: 30px;
+  height: 30px;
+  font-size: 1.05rem;
+  border-radius: 8px;
+}
+
+.iconBlue {
+  background: #e7f0ff;
+  color: #2f6fed;
+}
+
+.iconGreen {
+  background: #e7f6ee;
+  color: #1a9a55;
+}
+
+.iconOrange {
+  background: #fff1e6;
+  color: #e07a1f;
+}
+
+.iconPurple {
+  background: #f0e9ff;
+  color: #6b4fd8;
+}
+
+.label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4d5878;
+}
+
+.sm .label {
+  font-size: 11px;
+}
+
+.value {
+  margin: 12px 0 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #545386;
+  line-height: 1.1;
+}
+
+.sm .value {
+  margin-top: 8px;
+  font-size: 20px;
+}
+
+.valueUp {
+  color: #16834c;
+}
+
+.valueDown {
+  color: #bc4051;
+}
+
+.valueFlat {
+  color: #545386;
+}
+
+.foot {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #697189;
+}
+
+.sm .foot {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.deltaUp {
+  color: #16834c;
+  font-weight: 700;
+}
+
+.deltaDown {
+  color: #bc4051;
+  font-weight: 700;
+}
+
+.deltaFlat {
+  color: #697189;
+  font-weight: 700;
+}
+
+.toneTotal {
+  background: #f4f1fb;
+}
+
+.toneFacturada {
+  background: #fff6ee;
+}
+
+.tonePedidos {
+  background: #f3f6fd;
+}
+
+.toneClientes {
+  background: #f1f8f4;
+}
+
+@media (max-width: 980px) {
+  .cols3,
+  .cols4,
+  .cols6 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .value {
+    font-size: 22px;
+  }
+
+  .sm .value {
+    font-size: 18px;
+  }
+}

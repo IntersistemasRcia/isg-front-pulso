@@ -7,6 +7,42 @@ import { formatSpParamHint } from "@/lib/pulso/spParamResolver";
 import type { SpArquitectura } from "@/lib/pulso/types";
 import { truncateToolResult, type TruncateToolResultOptions } from "@/lib/chat/truncateToolResult";
 import { coerceParamsForSp } from "@/lib/pulso/spParamResolver";
+import { applyParamIntentOverrides } from "@/lib/pulso/paramIntentPolicy";
+import {
+  RESULT_LARGE_PROBE_LIMIT,
+  RESULT_LARGE_THRESHOLD,
+  listOptionalParamHints,
+  resolveResultSize,
+  shouldGateLargeResult,
+  type ModoResultado,
+} from "@/lib/pulso/resultSizeGate";
+import {
+  buildCompleteListadoPayload,
+  buildLargePreviewPayload,
+  buildSmallListadoPayload,
+} from "@/lib/pulso/listadoUiPayload";
+import {
+  UI_PREVIEW_MAX_ROWS,
+  UI_TABLE_AVISO,
+  WIDE_COLUMN_THRESHOLD,
+  countRowColumns,
+  slicePreviewRows,
+} from "@/lib/pulso/tablePreview";
+import { toEjecutarConsultaModelOutput } from "@/lib/pulso/toEjecutarConsultaModelOutput";
+import {
+  appendMaestroResueltoHint,
+  appendMasterMismatchHint,
+  appendMasterNameNotInPreviewHint,
+  detectMasterMismatch,
+  detectOmittedMasterFilters,
+  detectUnresolvedNamedMasters,
+  looksLikeMasterListSp,
+  makeMasterLookupSilent,
+  narrowCatalogRowsToMasterMatch,
+  pickMasterCatalogAlternatives,
+  resolveMasterFromCatalogRows,
+  userAskedForMasterCatalogList,
+} from "@/lib/pulso/masterFilterPolicy";
 
 const parametroItemSchema = z.object({
   nombre: z
@@ -33,6 +69,12 @@ const ejecutarConsultaPulsoSchema = z.object({
     .describe(
       "Lista de parámetros del SP. Usá los nombres exactos del catálogo (DesdeFecha, HastaFecha, etc.).",
     ),
+  modoResultado: z
+    .enum(["preview50", "completo"])
+    .optional()
+    .describe(
+      "Tras un listado grande: preview50 = adelanto en pantalla; completo = traer todas las filas y Excel si hay más de 50. Omitir en la primera ejecución.",
+    ),
 });
 
 /** Convierte lista {nombre, valor} del LLM a Record (sin renombrar; coerceParamsForSp alinea al catálogo). */
@@ -52,11 +94,10 @@ function paramsKeysOf(record: Record<string, unknown>): string {
   return Object.keys(record).join(",") || "(none)";
 }
 
-function countResultRows(result: Record<string, unknown>): number | undefined {
-  if (Array.isArray(result.rows)) return result.rows.length;
-  if (Array.isArray(result.data)) return result.data.length;
-  if (typeof result.totalRows === "number") return result.totalRows;
-  return undefined;
+function resolveLimiteFilas(modo: ModoResultado | undefined): number | undefined {
+  if (modo === "completo") return undefined;
+  if (modo === "preview50") return RESULT_LARGE_THRESHOLD;
+  return RESULT_LARGE_PROBE_LIMIT;
 }
 
 /** Log compacto siempre (PM2 / production). Sin filas ni valores de params. */
@@ -84,6 +125,119 @@ function logPulsoExec(opts: {
 }
 
 /**
+ * Instrucción al LLM tras fallo de ejecución.
+ * Si el SP rechazó un literal de filtro, priorizar ofrecer opciones válidas.
+ */
+function buildExecFailAvisoUsuario(
+  message: string | undefined,
+  catalogSp: SpArquitectura | undefined,
+): string {
+  const msg = (message ?? "").trim();
+  const looksLikeEnumReject =
+    /debe ser|valores?\s+permitid|TODAS|FACTURADAS|PEDIDOS|no\s+v[aá]lido|inv[aá]lido/i.test(
+      msg,
+    );
+
+  if (looksLikeEnumReject) {
+    const desc = (catalogSp?.descripcion ?? catalogSp?.description ?? "").trim();
+    return [
+      "NO digas que no hay informe ni que no existe esa consulta.",
+      "El filtro enviado no es un literal válido del parámetro.",
+      msg ? `Detalle técnico del error (uso interno): ${msg.slice(0, 240)}` : "",
+      desc
+        ? "Usá la descripción del catálogo: interpretá el pedido o ofrecé al usuario las opciones de filtro definidas ahí, en lenguaje de negocio, numeradas, y preguntá cuál prefiere."
+        : "Ofrecé al usuario las opciones válidas mencionadas en el error, en lenguaje de negocio, numeradas, y preguntá cuál prefiere.",
+      "Si ya queda claro el literal correcto, reintentá ejecutarConsultaPulso una vez con ese valor exacto.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return [
+    "Explicá el problema en una frase simple al usuario (sin jerga técnica).",
+    "Si el catálogo describe filtros del mismo informe, ofrecélos en lenguaje de negocio en lugar de decir que no hay informe.",
+    "Ofrecé reintentar o ajustar la búsqueda.",
+  ].join(" ");
+}
+
+function spUiTitle(
+  catalogSp: SpArquitectura | undefined,
+  nombreSp: string,
+): string {
+  return (
+    catalogSp?.descripcion?.slice(0, 80) ||
+    nombreSp.replace(/^sp_ISG_Vision_/i, "").replace(/_/g, " ")
+  );
+}
+
+/**
+ * Hard gate MASTER_MISMATCH (ok:false) si filas ≠ maestro pedido.
+ * Tras Catalogo_: inyecta maestroResuelto (codigo) si hay match por nombre.
+ * Catalogo_ / Get* de resolucion → sin UI (salvo pedido explicito del catalogo).
+ * mismatch/resolve usan lastUserQueryText (turno actual); silencio de UI puede
+ * mirar el contexto más amplio para «dame el listado de rubros».
+ */
+function annotateMasterMismatch(
+  payload: Record<string, unknown>,
+  userQueryContext: string | undefined,
+  parametros: Record<string, unknown>,
+  lastUserQueryText?: string,
+  catalogSp?: SpArquitectura,
+): Record<string, unknown> {
+  const nombreSp =
+    typeof payload.nombreSp === "string" ? payload.nombreSp : "";
+  const isMasterSp = Boolean(nombreSp) && looksLikeMasterListSp(nombreSp);
+  const masterText =
+    lastUserQueryText?.trim() || userQueryContext?.trim() || "";
+  const catalogAskText =
+    userQueryContext?.trim() || lastUserQueryText?.trim() || "";
+
+  let next = payload;
+  if (masterText && payload.ok === true) {
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    if (rows.length) {
+      const mismatch = detectMasterMismatch({
+        userText: masterText,
+        parametros,
+        previewRows: rows,
+        nombreSp: nombreSp || undefined,
+      });
+      if (mismatch) {
+        return appendMasterMismatchHint(payload, mismatch);
+      }
+
+      const resolved = resolveMasterFromCatalogRows({
+        userText: masterText,
+        nombreSp,
+        rows,
+      });
+      next = appendMaestroResueltoHint(payload, resolved);
+
+      if (isMasterSp) {
+        next = narrowCatalogRowsToMasterMatch(next, masterText, nombreSp);
+        next = appendMasterNameNotInPreviewHint(next, {
+          userText: masterText,
+          nombreSp,
+          parametrosEsperados: catalogSp
+            ? formatSpParamHint(catalogSp)
+            : undefined,
+        });
+      }
+    }
+  }
+
+  // Resolución intermedia: no Excel/tabla al usuario (evita N cards de Catalogo_*).
+  if (
+    next.ok === true &&
+    isMasterSp &&
+    !(catalogAskText && userAskedForMasterCatalogList(catalogAskText))
+  ) {
+    return makeMasterLookupSilent(next);
+  }
+  return next;
+}
+
+/**
  * Tool principal del agente Pulso: consulta datos ERP vía isg-api-pulso.
  * Parámetros validados contra GET /SPs_arquitectura (sys.parameters).
  */
@@ -91,25 +245,46 @@ export function buildEjecutarConsultaPulsoTool(
   sessionToken: string,
   catalog: SpArquitectura[],
   truncateOptions?: TruncateToolResultOptions,
+  userQueryContext?: string,
+  lastUserQueryText?: string,
 ) {
   return tool({
     description: [
       "Consulta datos del ERP (ventas, clientes, stock, finanzas, catálogos maestros).",
       "Elegí el sp_ISG_Vision_* del catálogo interno; nunca preguntes al usuario qué consulta usar.",
-      "Listados maestros (ej. sp_ISG_Vision_GetMarcas): ejecutá con parametros omitidos o []. No digas que no tenés acceso.",
+      "Listados maestros (Catalogo_* o Get* del catálogo con TIPO CATALOGO): ejecutá con parametros omitidos o []. No inventes nombres de SP. No digas que no tenés acceso.",
       "Usá solo parámetros de entrada del catálogo. Si el usuario dio fechas o período (ej. «junio»), calculá FechaDesde/FechaHasta con el año actual si falta y ejecutá ANTES de responder.",
       "Nunca respondas «no hay ventas», «no encontré datos» o «no se pudo acceder» sin haber ejecutado esta tool. Si no hay match exacto, ofrecé 1–2 alternativas de negocio cercanas y pedí confirmar; no inventes fallos de acceso.",
       "Si faltan inputs requeridos del catálogo que el usuario no dio, no inventes valores: el runtime devolverá MISSING_REQUIRED_PARAMS y debés pedir el dato de negocio.",
+      "Excel solo si hay más de 50 filas (exportId). No ofrezcas Excel en consultas chicas.",
     ].join(" "),
     inputSchema: ejecutarConsultaPulsoSchema,
-    execute: async ({ nombreSp, parametros }) => {
+    // Resumen limpio al LLM; la UI sigue recibiendo el output completo de execute.
+    toModelOutput: ({ output }: { output: unknown }) =>
+      toEjecutarConsultaModelOutput(output),
+    execute: async ({ nombreSp, parametros, modoResultado }) => {
       const started = Date.now();
       const raw = normalizeToolParametros(parametros);
-      const {
-        parametros: parametrosRecord,
-        warnings,
-        missingRequired,
-      } = coerceParamsForSp(nombreSp, raw, catalog);
+      const coerced = coerceParamsForSp(nombreSp, raw, catalog);
+      const warnings = [...coerced.warnings];
+      const { missingRequired } = coerced;
+
+      // Params con default SQL peligroso (TipoRanking, Objetivo%, …): forzar por intención.
+      const intentUserText =
+        lastUserQueryText?.trim() || userQueryContext?.trim() || "";
+      const intent = applyParamIntentOverrides({
+        nombreSp,
+        userText: intentUserText,
+        params: coerced.parametros,
+      });
+      const parametrosRecord = intent.params;
+      if (intent.applied.length > 0) {
+        warnings.push(
+          ...intent.applied.map(
+            (a) => `intent:${a.id}→${a.paramKey}=${String(a.value)}`,
+          ),
+        );
+      }
 
       const paramsKeys = paramsKeysOf(
         Object.keys(parametrosRecord).length > 0 ? parametrosRecord : raw,
@@ -122,6 +297,94 @@ export function buildEjecutarConsultaPulsoTool(
       const catalogSp = catalog.find(
         (sp) => getSpNombre(sp).toLowerCase() === nombreSp.toLowerCase(),
       );
+
+      if (!nombreSp.startsWith("sp_ISG_Vision_")) {
+        // GetRubros / GetMarcas fantasmas sin prefijo: mismo gate que UNKNOWN_SP de maestros.
+        if (looksLikeMasterListSp(nombreSp) && catalog.length > 0) {
+          const alternatives = pickMasterCatalogAlternatives(nombreSp, catalog, 3);
+          logPulsoExec({
+            nombreSp,
+            ok: false,
+            ms: Date.now() - started,
+            code: "UNKNOWN_SP",
+            paramsKeys,
+          });
+          return {
+            ok: false,
+            code: "UNKNOWN_SP",
+            nombreSp,
+            message:
+              "Esa consulta no está en el catálogo. No reintentés el mismo nombre.",
+            alternativasCatalogo: alternatives.length ? alternatives : undefined,
+            avisoUsuario: [
+              "NO digas error de SQL ni que el procedimiento no existe.",
+              "Ese Get*/listado maestro no está en el catálogo (fantasma).",
+              alternatives.length
+                ? `Ejecutá YA una candidata de alternativasCatalogo (${alternatives.join(", ")}); preferí Catalogo_* / Get* real con TIPO CATALOGO.`
+                : "Buscá en el catálogo un Catalogo_* o Get* real de ese maestro.",
+              "PROHIBIDO reintentar el mismo nombre. NO saltes al informe con un código viejo del hilo.",
+            ].join(" "),
+          };
+        }
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "UNAUTHORIZED_SP",
+          paramsKeys,
+        });
+        return {
+          ok: false,
+          code: "UNAUTHORIZED_SP",
+          nombreSp,
+          message: "Consulta no autorizada.",
+          avisoUsuario:
+            "Decile al usuario que esa consulta no está disponible y ofrecé otra forma de ayudar.",
+        };
+      }
+
+      // Solo ejecutar SPs presentes en el catálogo cacheado (evita 500 SQL por GetRubros fantasma).
+      if (catalog.length > 0 && !catalogSp) {
+        const masterLike = looksLikeMasterListSp(nombreSp);
+        const alternatives = masterLike
+          ? pickMasterCatalogAlternatives(nombreSp, catalog, 3)
+          : selectRelevantSps(nombreSp, catalog, 3)
+              .map((sp) => getSpNombre(sp))
+              .filter(Boolean)
+              .slice(0, 3);
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "UNKNOWN_SP",
+          paramsKeys,
+        });
+        return {
+          ok: false,
+          code: "UNKNOWN_SP",
+          nombreSp,
+          message:
+            "Esa consulta no está en el catálogo. No reintentés el mismo nombre.",
+          alternativasCatalogo: alternatives.length ? alternatives : undefined,
+          avisoUsuario: masterLike
+            ? [
+                "NO digas error de SQL ni que el procedimiento no existe.",
+                "Ese Get*/listado maestro no está en el catálogo (fantasma).",
+                alternatives.length
+                  ? `Ejecutá YA una candidata de alternativasCatalogo (${alternatives.join(", ")}); preferí Catalogo_* / Get* real con TIPO CATALOGO.`
+                  : "Buscá en el catálogo un Catalogo_* o Get* real de ese maestro.",
+                "PROHIBIDO reintentar el mismo nombre. NO saltes al informe con un código viejo del hilo.",
+              ].join(" ")
+            : [
+                "NO digas error de SQL ni que el procedimiento no existe.",
+                "Esa consulta no está disponible en esta instancia.",
+                alternatives.length
+                  ? "Elegí otra candidata del catálogo interno (o de alternativasCatalogo) que coincida con la intención, o pedí un dato de negocio (rubro, sucursal, fechas)."
+                  : "Ofrecé 1–2 alternativas de negocio cercanas del catálogo rankeado o pedí aclarar el pedido.",
+                "NUNCA inventes un nombre de SP (GetRubros, GetMarcas, etc.) que no figure en el catálogo.",
+              ].join(" "),
+        };
+      }
 
       if (missingRequired.length > 0) {
         logPulsoExec({
@@ -175,28 +438,118 @@ export function buildEjecutarConsultaPulsoTool(
         };
       }
 
-      if (!nombreSp.startsWith("sp_ISG_Vision_")) {
+      const masterGateText =
+        lastUserQueryText?.trim() || userQueryContext?.trim() || "";
+      const availableParamKeys = catalogSp
+        ? getSpParametros(catalogSp).map((p) => p.nombre)
+        : undefined;
+
+      // Usuario nombró maestros → deben estar como código en params del informe
+      const unresolvedMasters = detectUnresolvedNamedMasters({
+        userText: masterGateText,
+        coercedParams: parametrosRecord,
+        nombreSp,
+        availableParamKeys,
+      });
+      if (unresolvedMasters.length > 0) {
+        const dims = unresolvedMasters.map((u) => u.dimension).join(", ");
+        const detail = unresolvedMasters
+          .map((u) => {
+            const label = u.nameHint
+              ? `«${u.nameHint}»`
+              : u.code
+                ? `código ${u.code}`
+                : u.dimension;
+            return u.spHasNoFilter
+              ? `${u.dimension} ${label} (este SP no filtra por ${u.dimension})`
+              : `${u.dimension} ${label}`;
+          })
+          .join("; ");
         logPulsoExec({
           nombreSp,
           ok: false,
           ms: Date.now() - started,
-          code: "UNAUTHORIZED_SP",
+          code: "MASTER_FILTER_UNRESOLVED",
           paramsKeys,
         });
         return {
           ok: false,
-          code: "UNAUTHORIZED_SP",
+          code: "MASTER_FILTER_UNRESOLVED",
           nombreSp,
-          message: "Consulta no autorizada.",
-          avisoUsuario:
-            "Decile al usuario que esa consulta no está disponible y ofrecé otra forma de ayudar.",
+          unresolvedMasters,
+          warnings: warnings.length ? warnings : undefined,
+          parametrosEsperados: catalogSp
+            ? formatSpParamHint(catalogSp)
+            : undefined,
+          parametrosEnviados: raw,
+          parametrosEfectivos: parametrosRecord,
+          avisoUsuario: [
+            `MASTER_FILTER_UNRESOLVED: faltan filtros de maestro en el informe (${detail}).`,
+            "NO presentes ningún listado. Resolvé cada maestro con Catalogo_* (tomá maestroResuelto.codigo) y reejecutá el informe con TODOS los códigos juntos.",
+            unresolvedMasters.some((u) => u.spHasNoFilter)
+              ? `Este SP no tiene param para: ${unresolvedMasters
+                  .filter((u) => u.spHasNoFilter)
+                  .map((u) => u.dimension)
+                  .join(", ")}. Elegí otro SP del catálogo que sí filtre por ${dims}.`
+              : catalogSp
+                ? `Firma: ${formatSpParamHint(catalogSp)}. Insertá los códigos en los params de filtro de ${dims}.`
+                : `Insertá los códigos de ${dims} en los parámetros del informe.`,
+            "Al usuario: no digas que el informe ya está filtrado; corregí y reejecutá.",
+          ].join(" "),
+        };
+      }
+
+      // Filtro maestro enviado pero omitido por coerce → no ejecutar sin filtrar
+      const omittedFilters = detectOmittedMasterFilters({
+        userText: masterGateText,
+        rawParams: raw,
+        coercedParams: parametrosRecord,
+      });
+      if (omittedFilters.length > 0) {
+        const dims = omittedFilters.map((o) => o.dimension).join(", ");
+        const attempted = omittedFilters
+          .map((o) => `${o.attemptedKey}=${String(o.attemptedValue)}`)
+          .join(", ");
+        logPulsoExec({
+          nombreSp,
+          ok: false,
+          ms: Date.now() - started,
+          code: "FILTER_PARAM_OMITTED",
+          paramsKeys,
+        });
+        return {
+          ok: false,
+          code: "FILTER_PARAM_OMITTED",
+          nombreSp,
+          omittedFilters,
+          warnings: warnings.length ? warnings : undefined,
+          parametrosEsperados: catalogSp
+            ? formatSpParamHint(catalogSp)
+            : undefined,
+          parametrosEnviados: raw,
+          parametrosEfectivos: parametrosRecord,
+          avisoUsuario: [
+            `FILTER_PARAM_OMITTED: el filtro de ${dims} (${attempted}) NO entró en la consulta (nombre de parámetro inválido para este SP o no existe en la firma).`,
+            "NO presentes ningún listado ni digas que ya filtraste por ese maestro.",
+            catalogSp
+              ? `Firma de este SP: ${formatSpParamHint(catalogSp)}. Reejecutá con el nombre EXACTO del parámetro de filtro, o elegí otro SP del catálogo que sí filtre por ${dims} (p. ej. reposicion_por_articulo con IDRubro/IDSucursal).`
+              : `Elegí un SP del catálogo cuya firma tenga el filtro de ${dims}.`,
+            "Al usuario: no digas que el informe ya está filtrado; corregí y reejecutá.",
+          ].join(" "),
         };
       }
 
       try {
+        const limiteFilas = resolveLimiteFilas(modoResultado);
+        const execTimeoutMs =
+          modoResultado === "completo" || limiteFilas == null ? 60_000 : 25_000;
         const result = await ejecutarSpPulso(
-          { nombreSp, parametros: parametrosRecord },
-          { sessionToken, signal: AbortSignal.timeout(25_000) },
+          {
+            nombreSp,
+            parametros: parametrosRecord,
+            ...(limiteFilas != null ? { limiteFilas } : {}),
+          },
+          { sessionToken, signal: AbortSignal.timeout(execTimeoutMs) },
         );
         const ms = Date.now() - started;
         if (result.ok === false) {
@@ -213,23 +566,168 @@ export function buildEjecutarConsultaPulsoTool(
             ...result,
             nombreSp,
             warnings: warnings.length ? warnings : undefined,
-            avisoUsuario:
-              "Explicá el problema en una frase simple al usuario (sin jerga técnica) y ofrecé reintentar o ajustar la búsqueda.",
+            avisoUsuario: buildExecFailAvisoUsuario(
+              typeof fail.message === "string" ? fail.message : undefined,
+              catalogSp,
+            ),
           }, truncateOptions);
         }
-        const okResult = result as Record<string, unknown>;
+
+        const size = resolveResultSize(result, { limiteFilas });
+        const { totalRows, truncated, rows, totalExact, atLeastRows } = size;
+        const title = spUiTitle(catalogSp, nombreSp);
+        const optionalParamHints = listOptionalParamHints(
+          nombreSp,
+          parametrosRecord,
+          catalog,
+        );
+        const baseUi = {
+          nombreSp,
+          title,
+          warnings,
+          optionalParamHints,
+        };
+
+        // ── Completo: materializar todas las filas + Excel si >50 ────────────
+        if (modoResultado === "completo") {
+          if (!rows.length) {
+            logPulsoExec({
+              nombreSp,
+              ok: false,
+              ms,
+              code: "EMPTY_RESULT",
+              paramsKeys,
+              rows: 0,
+            });
+            return {
+              ok: false,
+              code: "EMPTY_RESULT",
+              nombreSp,
+              totalRows: 0,
+              avisoUsuario:
+                "No hubo filas para exportar. Decíselo al usuario en una frase simple de negocio.",
+            };
+          }
+          logPulsoExec({
+            nombreSp,
+            ok: true,
+            ms,
+            code:
+              rows.length > RESULT_LARGE_THRESHOLD
+                ? "EXCEL_EXPORT"
+                : "OK_SMALL",
+            paramsKeys,
+            rows: rows.length,
+          });
+          return annotateMasterMismatch(
+            buildCompleteListadoPayload({ ...baseUi, allRows: rows }),
+            userQueryContext,
+            parametrosRecord,
+            lastUserQueryText,
+            catalogSp,
+          );
+        }
+
+        // ── Grande (1ª pasada / probe): adelanto + total si el API dio COUNT ─
+        // No reconsultar todo acá: el Excel completo va en modoResultado=completo.
+        if (shouldGateLargeResult(modoResultado, totalRows, truncated)) {
+          const previewRows = slicePreviewRows(rows, RESULT_LARGE_THRESHOLD);
+          logPulsoExec({
+            nombreSp,
+            ok: true,
+            ms,
+            code: totalExact ? "LARGE_PREVIEW_EXACT" : "LARGE_PREVIEW_UNCERTAIN",
+            paramsKeys,
+            rows: totalExact ? totalRows : previewRows.length,
+          });
+          return annotateMasterMismatch(
+            buildLargePreviewPayload({
+              ...baseUi,
+              previewRows,
+              size: { totalRows, totalExact, atLeastRows },
+            }),
+            userQueryContext,
+            parametrosRecord,
+            lastUserQueryText,
+            catalogSp,
+          );
+        }
+
+        // ── Preview50 explícito ──────────────────────────────────────────────
+        if (modoResultado === "preview50") {
+          const previewRows = rows.slice(0, RESULT_LARGE_THRESHOLD);
+          logPulsoExec({
+            nombreSp,
+            ok: true,
+            ms,
+            code: "PREVIEW50",
+            paramsKeys,
+            rows: totalExact ? totalRows : previewRows.length,
+          });
+          return annotateMasterMismatch(
+            buildLargePreviewPayload({
+              ...baseUi,
+              previewRows,
+              size: { totalRows, totalExact, atLeastRows },
+            }),
+            userQueryContext,
+            parametrosRecord,
+            lastUserQueryText,
+            catalogSp,
+          );
+        }
+
+        // ── Resultado chico (≤50, no truncated) ──────────────────────────────
         logPulsoExec({
           nombreSp,
           ok: true,
           ms,
           paramsKeys,
-          rows: countResultRows(okResult),
+          rows: rows.length,
         });
-        return truncateToolResult({
-          ...result,
-          nombreSp,
-          warnings: warnings.length ? warnings : undefined,
-        }, truncateOptions);
+
+        if (rows.length <= RESULT_LARGE_THRESHOLD) {
+          return annotateMasterMismatch(
+            buildSmallListadoPayload({ ...baseUi, rows }),
+            userQueryContext,
+            parametrosRecord,
+            lastUserQueryText,
+            catalogSp,
+          );
+        }
+
+        // Defensa: dataset grande sin flags de truncate del API.
+        const wide = countRowColumns(rows) > WIDE_COLUMN_THRESHOLD;
+        const uiRows = slicePreviewRows(rows, UI_PREVIEW_MAX_ROWS);
+        return annotateMasterMismatch(
+          {
+            ok: true,
+            uiTable: true,
+            nombreSp,
+            rows: uiRows,
+            totalRows: rows.length,
+            totalExact: true,
+            mostrando: uiRows.length,
+            truncated: rows.length > uiRows.length,
+            columnCount: countRowColumns(rows),
+            warnings: warnings.length ? warnings : undefined,
+            avisoUsuario: [
+              UI_TABLE_AVISO,
+              `Hay ${rows.length} registros; en pantalla ves un adelanto.`,
+              "Para Excel completo pedí modoResultado=completo.",
+              wide
+                ? "Hay muchas columnas: se puede desplazar la tabla en pantalla."
+                : "",
+              "NO listes filas. NO digas UI/HTML/tool.",
+            ]
+              .filter(Boolean)
+              .join(" "),
+          },
+          userQueryContext,
+          parametrosRecord,
+          lastUserQueryText,
+          catalogSp,
+        );
       } catch (error) {
         const message =
           error instanceof Error
@@ -255,8 +753,7 @@ export function buildEjecutarConsultaPulsoTool(
           message,
           nombreSp,
           parametros: parametrosRecord,
-          avisoUsuario:
-            "Decile al usuario que no se pudo obtener la información ahora y sugerí reintentar en unos segundos.",
+          avisoUsuario: buildExecFailAvisoUsuario(message, catalogSp),
         };
       }
     },
@@ -309,13 +806,22 @@ export function buildListarCatalogoPulsoTool(catalog: SpArquitectura[]) {
 export function buildPulsoTools(
   sessionToken: string,
   catalog: SpArquitectura[] = [],
-  options?: { includeCatalogTool?: boolean; truncateOptions?: TruncateToolResultOptions },
+  options?: {
+    includeCatalogTool?: boolean;
+    truncateOptions?: TruncateToolResultOptions;
+    /** Pedido reciente del usuario (ranking SP / follow-ups / silent catalog). */
+    userQueryContext?: string;
+    /** Último mensaje user: MASTER_MISMATCH y maestroResuelto (turno actual). */
+    lastUserQueryText?: string;
+  },
 ) {
   const tools = {
     ejecutarConsultaPulso: buildEjecutarConsultaPulsoTool(
       sessionToken,
       catalog,
       options?.truncateOptions,
+      options?.userQueryContext,
+      options?.lastUserQueryText,
     ),
     ...(options?.includeCatalogTool && catalog.length > 0
       ? { listarCatalogoPulso: buildListarCatalogoPulsoTool(catalog) }
