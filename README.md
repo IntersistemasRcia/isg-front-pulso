@@ -22,7 +22,18 @@ Abrir [http://localhost:3000](http://localhost:3000).
 - Dev (`npm run dev`): usa [`.env.development`](.env.development) → `AUTH_API_URL=http://api.intersistemas.ar:8601`
 - Prod (`npm start`): usa [`.env.production`](.env.production) → `AUTH_API_URL=http://localhost:8601` (mismo servidor)
 - Proxy Next: `POST /api/auth/login` → `POST {AUTH_API_URL}/api/Auth/Login` con `{ usuario, password }`
+- Tras login: cookie HttpOnly `pulso_token` (middleware del dashboard) + fallback `localStorage` (`pulso_jwt` / `pulso_user`). Header alternativo `x-pulso-token` cuando IIS/ARR elimina `Authorization`.
+- Sesión: `GET /api/auth/session` valida el JWT antes de marcar `sessionReady` en `AuthProvider`.
 - Secretos (`OPENAI_API_KEY`, `JWT_SECRET`, claves LLM) van en `.env.local` (no se versionan)
+
+## Documentación
+
+| Doc | Contenido |
+|-----|-----------|
+| [docs/PULSO_API.md](docs/PULSO_API.md) | Integración [isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso): arquitectura, ejecutar-sp, gate 50 filas, contratos `develop` |
+| [docs/PULSO_SP_METADATA.md](docs/PULSO_SP_METADATA.md) | Estándar `/*-- Pulso: */`, catálogos, ParamIntent |
+| [docs/LLM.md](docs/LLM.md) | Multi-LLM, BYOK, ventana por modelo, `prepareChatPrompt` |
+| [docs/BACKEND_EJECUTAR_SP_RESULT_SIZE.md](docs/BACKEND_EJECUTAR_SP_RESULT_SIZE.md) | Stub → ver gate en `PULSO_API.md` |
 
 ## Multi-LLM, tier free y BYOK
 
@@ -36,9 +47,7 @@ Modelos gratuitos por defecto: **Gemini 3.6 Flash** y **GPT-OSS 120B** vía Groq
 
 Modelos premium: GPT-4o, Claude Sonnet, Gemini 2.5 Pro (requieren BYOK o claves de empresa).
 
-Documentación detallada: [docs/LLM.md](docs/LLM.md).
-
-Integración ERP: [docs/PULSO_API.md](docs/PULSO_API.md) ([isg-api-pulso](https://github.com/IntersistemasRcia/isg-api-pulso)).
+Detalle: [docs/LLM.md](docs/LLM.md).
 
 ## Ramas
 
